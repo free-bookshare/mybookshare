@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>MyBookShare Inventory</title>
+  <!-- Load Tesseract.js from a CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 2rem; }
+    #status { margin-top: 1rem; color: #336699; }
+    #book-list { list-style-type: none; padding: 0; }
+    #book-list li { margin: 0.5rem 0; }
+    .book-title { font-weight: bold; }
+  </style>
+</head>
+<body>
+  <h1>MyBookShare Inventory</h1>
+  <!-- File input to upload a book cover -->
+  <input type="file" id="file-input" accept="image/*">
+  <button type="button" onclick="processImage()">Upload &amp; Scan</button>
+  <div id="status"></div>
+
+  <h2>Inventory</h2>
+  <!-- Search box to filter books by title -->
+  <input type="text" id="search-input" placeholder="Search by title..." oninput="filterBooks()">
+  <ul id="book-list"></ul>
+
+<script>
+  // Array to hold book records in memory
+  const books = [];
+
+  // Processes the uploaded image using Tesseract.js
+  async function processImage() {
+    const input = document.getElementById('file-input');
+    if (!input.files || input.files.length === 0) {
+      alert('Please select an image of the book cover.');
+      return;
+    }
+    const file = input.files[0];
+    const reader = new FileReader();
+
+    reader.onload = async () => {
+      // Inform the user that scanning has started
+      document.getElementById('status').textContent = 'Scanning image for text…';
+      try {
+        // Run OCR on the image
+        const result = await Tesseract.recognize(reader.result, 'eng', {
+          logger: m => console.log(m) // optional logging
+        });
+        document.getElementById('status').textContent = 'Scan complete.';
+        // Take the first non-empty line as the tentative title
+        const lines = result.data.text.split('\n').map(l => l.trim()).filter(Boolean);
+        const title = lines.length > 0 ? lines[0] : 'Untitled';
+        // Add the record to the in-memory array
+        books.push({ title: title, fullText: result.data.text, imageData: reader.result });
+        // Update the displayed list
+        renderBooks();
+      } catch (err) {
+        console.error(err);
+        document.getElementById('status').textContent = 'Error scanning image.';
+      }
+    };
+    reader.readAsDataURL(file);
+  }
+
+  // Renders all books in the list
+  function renderBooks() {
+    const list = document.getElementById('book-list');
+    list.innerHTML = '';
+    books.forEach((book) => {
+      const li = document.createElement('li');
+      li.innerHTML = '<span class="book-title">' + book.title + '</span>';
+      list.appendChild(li);
+    });
+  }
+
+  // Filters books based on the search input
+  function filterBooks() {
+    const query = document.getElementById('search-input').value.toLowerCase();
+    const list = document.getElementById('book-list');
+    list.innerHTML = '';
+    books
+      .filter(book => book.title.toLowerCase().includes(query))
+      .forEach(book => {
+        const li = document.createElement('li');
+        li.innerHTML = '<span class="book-title">' + book.title + '</span>';
+        list.appendChild(li);
+      });
+  }
+</script>
+</body>
+</html>

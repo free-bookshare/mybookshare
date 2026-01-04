@@ -69,6 +69,7 @@
       border-radius: 4px;
       padding: 8px;
       text-align: center;
+      position: relative;
     }
     .book-item img {
       width: 100%;
@@ -85,18 +86,38 @@
       color: #555;
       margin-top: 4px;
     }
+    .delete-btn {
+      position: absolute;
+      top: 4px;
+      right: 4px;
+      background-color: #ff4444;
+      color: white;
+      border: none;
+      border-radius: 3px;
+      padding: 4px 8px;
+      cursor: pointer;
+      font-size: 0.8em;
+    }
+    .delete-btn:hover {
+      background-color: #cc0000;
+    }
     #search-input {
       padding: 6px 10px;
       width: 250px;
       margin-bottom: 10px;
       color: #000;
     }
+    #storage-info {
+      margin-top: 10px;
+      font-size: 0.9em;
+      color: #c5d6ff;
+    }
   </style>
 </head>
 <body>
   <div id="header">
     <!-- Logo must exist at /images/logo.png in your repository -->
-    <img src="images/logo.png" alt="My Book Share logo">
+    <img src="images/logo.png" alt="My Book Share logo" onerror="this.style.display='none'">
     <span>mybookshare.com Inventory Page</span>
   </div>
   <div class="container">
@@ -107,6 +128,7 @@
       <input type="email" id="email-input" placeholder="you@example.com">
       <button id="upload-button" type="button">Upload &amp; Scan</button>
       <div id="status"></div>
+      <div id="storage-info"></div>
     </div>
     <h2>Inventory</h2>
     <input type="text" id="search-input" placeholder="Search by title..." oninput="filterBooks()">
@@ -145,31 +167,78 @@
     let books = [];
 
     function loadBooks() {
-      const stored = localStorage.getItem('books');
-      if (stored) {
-        books = JSON.parse(stored);
+      try {
+        const stored = localStorage.getItem('books');
+        if (stored) {
+          books = JSON.parse(stored);
+          updateStorageInfo();
+        }
+      } catch (e) {
+        console.error('Error loading books:', e);
+        if (e.name === 'QuotaExceededError') {
+          alert('Storage quota exceeded. Please delete some books.');
+        }
       }
     }
 
     function saveBooks() {
-      localStorage.setItem('books', JSON.stringify(books));
+      try {
+        localStorage.setItem('books', JSON.stringify(books));
+        updateStorageInfo();
+      } catch (e) {
+        console.error('Error saving books:', e);
+        if (e.name === 'QuotaExceededError') {
+          alert('Storage quota exceeded. Cannot save more books. Please delete some existing entries.');
+          return false;
+        }
+      }
+      return true;
+    }
+
+    function updateStorageInfo() {
+      const info = document.getElementById('storage-info');
+      const booksCount = books.length;
+      const storageSize = new Blob([localStorage.getItem('books') || '']).size;
+      const storageMB = (storageSize / (1024 * 1024)).toFixed(2);
+      info.textContent = `Books stored: ${booksCount} | Storage used: ${storageMB} MB`;
+    }
+
+    function deleteBook(index) {
+      if (confirm('Are you sure you want to delete this book?')) {
+        books.splice(index, 1);
+        saveBooks();
+        renderBooks();
+      }
     }
 
     function renderBooks() {
       const grid = document.getElementById('inventory-grid');
       grid.innerHTML = '';
-      books.forEach((book) => {
+      books.forEach((book, index) => {
         const item = document.createElement('div');
         item.className = 'book-item';
+        
+        const deleteBtn = document.createElement('button');
+        deleteBtn.className = 'delete-btn';
+        deleteBtn.textContent = 'Delete';
+        deleteBtn.onclick = () => deleteBook(index);
+        
         const img = document.createElement('img');
-        // Use the relative path from images directory
-        img.src = book.imagePath;
+        // Use the stored base64 data URL
+        img.src = book.imageData;
+        img.onerror = function() {
+          this.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="180" height="220"%3E%3Crect fill="%23ddd" width="180" height="220"/%3E%3Ctext x="50%25" y="50%25" text-anchor="middle" dy=".3em" fill="%23999"%3ENo Image%3C/text%3E%3C/svg%3E';
+        };
+        
         const titleEl = document.createElement('div');
         titleEl.className = 'book-title';
         titleEl.textContent = book.title;
+        
         const emailEl = document.createElement('div');
         emailEl.className = 'book-email';
         emailEl.textContent = 'Contact: ' + book.email;
+        
+        item.appendChild(deleteBtn);
         item.appendChild(img);
         item.appendChild(titleEl);
         item.appendChild(emailEl);
@@ -181,17 +250,30 @@
       const query = document.getElementById('search-input').value.toLowerCase();
       const grid = document.getElementById('inventory-grid');
       grid.innerHTML = '';
-      books.filter(book => book.title.toLowerCase().includes(query)).forEach(book => {
+      books.filter(book => book.title.toLowerCase().includes(query)).forEach((book, index) => {
         const item = document.createElement('div');
         item.className = 'book-item';
+        
+        const deleteBtn = document.createElement('button');
+        deleteBtn.className = 'delete-btn';
+        deleteBtn.textContent = 'Delete';
+        deleteBtn.onclick = () => deleteBook(index);
+        
         const img = document.createElement('img');
-        img.src = book.imagePath;
+        img.src = book.imageData;
+        img.onerror = function() {
+          this.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="180" height="220"%3E%3Crect fill="%23ddd" width="180" height="220"/%3E%3Ctext x="50%25" y="50%25" text-anchor="middle" dy=".3em" fill="%23999"%3ENo Image%3C/text%3E%3C/svg%3E';
+        };
+        
         const titleEl = document.createElement('div');
         titleEl.className = 'book-title';
         titleEl.textContent = book.title;
+        
         const emailEl = document.createElement('div');
         emailEl.className = 'book-email';
         emailEl.textContent = 'Contact: ' + book.email;
+        
+        item.appendChild(deleteBtn);
         item.appendChild(img);
         item.appendChild(titleEl);
         item.appendChild(emailEl);
@@ -203,60 +285,86 @@
       const fileInput = document.getElementById('file-input');
       const emailInput = document.getElementById('email-input');
       const status = document.getElementById('status');
+      
       if (!fileInput.files || fileInput.files.length === 0) {
         alert('Please select an image file (.jpg or .png).');
         return;
       }
+      
       const file = fileInput.files[0];
       if (!['image/jpeg', 'image/png'].includes(file.type)) {
         alert('Only JPG and PNG images are allowed.');
         return;
       }
+      
+      // Check file size (limit to 2MB per image to avoid storage issues)
+      const maxSize = 2 * 1024 * 1024; // 2MB
+      if (file.size > maxSize) {
+        alert('Image file is too large. Please use an image smaller than 2MB.');
+        return;
+      }
+      
       const email = emailInput.value.trim();
       if (!validateEmail(email)) {
         alert('Please enter a valid email address.');
         return;
       }
-      // Read file as data URL for OCR only (image will be stored separately)
+      
+      // Read file as data URL
       const reader = new FileReader();
       reader.onload = async function(e) {
         const dataUrl = e.target.result;
+        
         // Check if image is appropriate
         if (!isImageAppropriate(dataUrl)) {
           alert('The uploaded image does not meet our content guidelines.');
           return;
         }
+        
         status.textContent = 'Scanning image for text…';
+        
         try {
           const result = await Tesseract.recognize(dataUrl, 'eng', { logger: m => console.log(m) });
           status.textContent = 'Scan complete.';
+          
           const lines = result.data.text.split('\n').map(l => l.trim()).filter(Boolean);
           let title = lines.length > 0 ? lines.slice(0, 3).join(' ').substring(0, 100) : 'Untitled';
+          
           // Prompt user to confirm or edit title
           title = prompt('Detected title:', title) || title;
-          // Create a unique filename based on timestamp and original name
-          const uniqueName = Date.now() + '_' + file.name.replace(/\s+/g, '_');
-          const imagePath = 'images/' + uniqueName;
-          // Save book entry (you must manually upload the image to this path in your repository)
+          
+          // Create book entry with image data stored as base64
           const book = {
             title: title,
             email: email,
-            imagePath: imagePath
+            imageData: dataUrl, // Store the actual image data
+            uploadDate: new Date().toISOString()
           };
+          
           books.push(book);
-          saveBooks();
-          renderBooks();
-          // Send confirmation email
-          sendConfirmationEmail(email, title);
-          // Reset inputs
-          fileInput.value = '';
-          emailInput.value = '';
-          status.textContent = 'Book added to inventory. Please remember to upload the image file to the images directory in your repository.';
+          
+          // Try to save
+          if (saveBooks()) {
+            renderBooks();
+            
+            // Send confirmation email
+            sendConfirmationEmail(email, title);
+            
+            // Reset inputs
+            fileInput.value = '';
+            emailInput.value = '';
+            status.textContent = 'Book successfully added to inventory!';
+          } else {
+            // Remove the book we just added since save failed
+            books.pop();
+            status.textContent = 'Failed to save book. Storage may be full.';
+          }
         } catch (err) {
           console.error(err);
-          status.textContent = 'Error scanning image.';
+          status.textContent = 'Error scanning image: ' + err.message;
         }
       };
+      
       reader.readAsDataURL(file);
     }
 

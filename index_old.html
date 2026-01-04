@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>MyBookShare Inventory</title>
+  <!-- Load Tesseract.js and EmailJS from CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/emailjs-com@2/dist/email.min.js"></script>
+  <script>
+    (function() {
+      // Initialize EmailJS; replace with your actual user ID
+      emailjs.init('YOUR_EMAILJS_USER_ID');
+    })();
+  </script>
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background-color: #265df0; /* professional blue */
+      color: #fff;
+    }
+    #header {
+      background-color: #1e4bb8;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    #header img {
+      height: 50px;
+      margin-right: 10px;
+    }
+    #header span {
+      font-size: 1.8rem;
+      font-weight: 600;
+    }
+    .container {
+      padding: 20px;
+    }
+    label {
+      display: block;
+      margin-bottom: 8px;
+      color: #fff;
+    }
+    input[type="file"],
+    input[type="email"],
+    button {
+      margin-right: 8px;
+      padding: 6px 10px;
+      font-size: 1rem;
+    }
+    button {
+      cursor: pointer;
+    }
+    #status {
+      margin-top: 10px;
+      color: #c5d6ff;
+    }
+    #inventory-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 16px;
+      margin-top: 20px;
+    }
+    .book-item {
+      background-color: #fff;
+      color: #000;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      padding: 8px;
+      text-align: center;
+    }
+    .book-item img {
+      width: 100%;
+      height: 220px;
+      object-fit: contain;
+      border-bottom: 1px solid #ddd;
+    }
+    .book-title {
+      font-weight: bold;
+      margin-top: 8px;
+    }
+    .book-email {
+      font-size: 0.9em;
+      color: #555;
+      margin-top: 4px;
+    }
+    #search-input {
+      padding: 6px 10px;
+      width: 250px;
+      margin-bottom: 10px;
+      color: #000;
+    }
+  </style>
+</head>
+<body>
+  <div id="header">
+    <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAGQAAABqCAYAAAAVBN7MAAAABmJLR0QA/wD/AP+gvaeTAAADOElEQVR4nO2dTYvVUBDG9+f5pvDqXWY3lpLmQSGwT+mKksoBwWOYS8CHjT7BMrHuCjgmh7hTm4AyELCshEkXkZxha3CqEU++/3Gy3qTRtaGq0bex2vSxd09TXTMXf2VX3X++33mf/OzJMkynAdo0G0wmQ0E4TV2/s8NgMYgDOlwMMAzOYdmzdlJbrVf6BqmZIj+tKvPUE4i1un4MoBkMCEkWk20LmZkDmbPdA5Ibq6K5qaGk1BlwtjT5PwqgrR+22lgwG7pmbHAnfxSx4tDby+3RY120TvBILUthcXaFjFtaeYoelQGJtOMiU52TO7aWJryJVXI8MTmDiRBeMn7Xjc8jA+m3nZH3nWMg3juEDvLC2tt9vDjg272I5dObHmDdFqa176G7nVQ+Zmdc0W2BzSArp2WmBv2OqzDBoYE3F3w7Y09k7wUsA8gCzYNj9bmawW72GMv3pPe/cj8FytsB3J0YOacKEBfZx3l2TAeGbsfKdMIS0/KyuAcxCQF25/WvBlz4nqF4g4mbD7c8hSd7u83IHBoLJ3p6cXBAcHpTiXgF+ni++oUrVgBu9jVO8zyvze+Fqs6YsIdp1h2RABwHdxb14e+bBfE2wEEEj0Slb2dowh0K87p7BPKBZvTW2hdxfCld7pEPjoVvwszMB8dx0oK8hjq+YZXP3F72+NTI6IMNiSObY7TbrITC7VsKP0pNN+wFfAMwX8CEAAaSa0LomwD0DPBsa8JT8fd0GzZ8kp+jxMcxG7XJc52dV4NV1FTa81UvxNnJZM10hl0wqbTeySDm9X2IzPANG5EaVSFfzdTDDZcfVXPt5i+zTKTHW3T3W1+nCwX1zuZC0k1zWqF6JsOUe5I20PG3nrHSfmKrDGbe6OxgR5n9uG26kJnxVMODbV/NA6+o57skgOEAJWIDsH/nKkNtqzD8N1PH48Rgzns79H6PkVUIwJUGOXoM9RVb/VsPii0cwywI8b4RdBXk8TBKVCB0569kq9PM+3eA9ieXxOhRb9v2LbdrwuCISFEUQORKSFEVIoGIkSkgwqeNRVLBjxqTXfOHa3xv6N+rXYw63u8AfGyk2HF1u2tq5LbZzMaEpbMFzf8gTU8wNselK9ruK46K2u/UTzd3u782GOqDV9oS8vmu1HYQrVmw6ivPt22/dXSMZEoCD/q548GpSgiypGFstDuudFswgIqaWtHZ0ONkuHUfEqo5h2hF92PjUXqR2a1vBQcHVe1hWP6HkHe3k2vyaZy5vm3GY5nZ5M4fWz1A4TO3q/6ue6xLvp6uT6XcP1SwmDQabBbArizvfl3U5C6QxXsANrvIOTCu6bReeHt86K2Hcx+FZctNBdjTMmKB7ptDpOJhfZ2eM7UigLb07cnb6fx7JBf3RZoY9A9EYCXwWK8hNI4MPwIIDJ2dJ9ugEBiATfek0ix8oQTxFQxI43RDvAJLTrBBASCNF0eaEOYq3QNoGWN3boe4F3gO28Jjg2Ctjsd7Gfv0kA1A5GYR2f5SKNUzZfTMv7YRNikRPhbOanGzEE4oAHJbMjWYbkEuBWWqhbIsdm8N3L7i+5BJHHzDVH2LBe/j2kWdZEPjxEGIUkQgkpGo7ygQAp0xiNHIE5s99d7zWktz7/drhPhqftjEoRCYRRBACqXo5LvdQ0+1r1jKWfc2Yv/9Z1pOY0BbYy6xrjRywbKX3ChnkmHBD3n66vkGX9dHq/HUGsDYD5OQO15iu7fFA0I6BE6cxmXjWh3cd+GtD7zIuZID0KwY7Sv1F9kSc78jXeM1Ky9wKYNRtMJkNBOE1dv7PDYDGIAs6XAwgDM5h2bN2Ulu
+    alt="My Book Share logo">
+    <span>mybookshare.com Inventory Page</span>
+  </div>
+  <div class="container">
+    <div>
+      <label for="file-input">Upload book cover:</label>
+      <input type="file" id="file-input" accept=".jpg,.jpeg,.png">
+      <label for="email-input">Your email (for interested readers to contact you):</label>
+      <input type="email" id="email-input" placeholder="you@example.com">
+      <button id="upload-button" type="button">Upload &amp; Scan</button>
+      <div id="status"></div>
+    </div>
+    <h2>Inventory</h2>
+    <input type="text" id="search-input" placeholder="Search by title..." oninput="filterBooks()">
+    <div id="inventory-grid"></div>
+  </div>
+  <script>
+    // Placeholder moderation function. Integrate with an external API in production.
+    function isImageAppropriate(dataUrl) {
+      // For now always return true; implement actual moderation logic here.
+      return true;
+    }
+
+    function validateEmail(email) {
+      const re = /^\S+@\S+\.\S+$/;
+      return re.test(email);
+    }
+
+    function sendConfirmationEmail(email, title) {
+      // Replace with your EmailJS service and template IDs
+      const serviceID = 'YOUR_SERVICE_ID';
+      const templateID = 'YOUR_TEMPLATE_ID';
+      const params = {
+        user_email: email,
+        book_title: title
+      };
+      return emailjs.send(serviceID, templateID, params)
+        .then(function(response) {
+          console.log('Email sent', response.status, response.text);
+        })
+        .catch(function(error) {
+          console.error('Email error', error);
+        });
+    }
+
+    // Book entries stored in memory and persisted to localStorage
+    let books = [];
+
+    function loadBooks() {
+      const stored = localStorage.getItem('books');
+      if (stored) {
+        books = JSON.parse(stored);
+      }
+    }
+
+    function saveBooks() {
+      localStorage.setItem('books', JSON.stringify(books));
+    }
+
+    function renderBooks() {
+      const grid = document.getElementById('inventory-grid');
+      grid.innerHTML = '';
+      books.forEach((book) => {
+        const item = document.createElement('div');
+        item.className = 'book-item';
+        const img = document.createElement('img');
+        img.src = book.imageData;
+        const titleEl = document.createElement('div');
+        titleEl.className = 'book-title';
+        titleEl.textContent = book.title;
+        const emailEl = document.createElement('div');
+        emailEl.className = 'book-email';
+        emailEl.textContent = 'Contact: ' + book.email;
+        item.appendChild(img);
+        item.appendChild(titleEl);
+        item.appendChild(emailEl);
+        grid.appendChild(item);
+      });
+    }
+
+    function filterBooks() {
+      const query = document.getElementById('search-input').value.toLowerCase();
+      const grid = document.getElementById('inventory-grid');
+      grid.innerHTML = '';
+      books.filter(book => book.title.toLowerCase().includes(query)).forEach(book => {
+        const item = document.createElement('div');
+        item.className = 'book-item';
+        const img = document.createElement('img');
+        img.src = book.imageData;
+        const titleEl = document.createElement('div');
+        titleEl.className = 'book-title';
+        titleEl.textContent = book.title;
+        const emailEl = document.createElement('div');
+        emailEl.className = 'book-email';
+        emailEl.textContent = 'Contact: ' + book.email;
+        item.appendChild(img);
+        item.appendChild(titleEl);
+        item.appendChild(emailEl);
+        grid.appendChild(item);
+      });
+    }
+
+    async function processUpload() {
+      const fileInput = document.getElementById('file-input');
+      const emailInput = document.getElementById('email-input');
+      const status = document.getElementById('status');
+      if (!fileInput.files || fileInput.files.length === 0) {
+        alert('Please select an image file (.jpg or .png).');
+        return;
+      }
+      const file = fileInput.files[0];
+      if (!['image/jpeg', 'image/png'].includes(file.type)) {
+        alert('Only JPG and PNG images are allowed.');
+        return;
+      }
+      const email = emailInput.value.trim();
+      if (!validateEmail(email)) {
+        alert('Please enter a valid email address.');
+        return;
+      }
+      // Read file as data URL
+      const reader = new FileReader();
+      reader.onload = async function(e) {
+        const dataUrl = e.target.result;
+        // Check if image is appropriate
+        if (!isImageAppropriate(dataUrl)) {
+          alert('The uploaded image does not meet our content guidelines.');
+          return;
+        }
+        status.textContent = 'Scanning image for text…';
+        try {
+          const result = await Tesseract.recognize(dataUrl, 'eng', { logger: m => console.log(m) });
+          status.textContent = 'Scan complete.';
+          const lines = result.data.text.split('\n').map(l => l.trim()).filter(Boolean);
+          let title = lines.length > 0 ? lines.slice(0, 3).join(' ').substring(0, 100) : 'Untitled';
+          // Prompt user to confirm or edit title
+          title = prompt('Detected title:', title) || title;
+          // Save book entry
+          const book = {
+            title: title,
+            email: email,
+            imageData: dataUrl
+          };
+          books.push(book);
+          saveBooks();
+          renderBooks();
+          // Send confirmation email
+          sendConfirmationEmail(email, title);
+          // Reset inputs
+          fileInput.value = '';
+          emailInput.value = '';
+          status.textContent = 'Book added to inventory.';
+        } catch (err) {
+          console.error(err);
+          status.textContent = 'Error scanning image.';
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+
+    document.getElementById('upload-button').addEventListener('click', processUpload);
+
+    // Initialize
+    loadBooks();
+    renderBooks();
+  </script>
+</body>
+</html>

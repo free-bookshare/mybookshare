@@ -95,13 +95,13 @@
 </head>
 <body>
   <div id="header">
-    <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAGQAAABqCAYAAAAVBN7MAAAABmJLR0QA/wD/AP+gvaeTAAADOElEQVR4nO2dTYvVUBDG9+f5pvDqXWY3lpLmQSGwT+mKksoBwWOYS8CHjT7BMrHuCjgmh7hTm4AyELCshEkXkZxha3CqEU++/3Gy3qTRtaGq0bex2vSxd09TXTMXf2VX3X++33mf/OzJMkynAdo0G0wmQ0E4TV2/s8NgMYgDOlwMMAzOYdmzdlJbrVf6BqmZIj+tKvPUE4i1un4MoBkMCEkWk20LmZkDmbPdA5Ibq6K5qaGk1BlwtjT5PwqgrR+22lgwG7pmbHAnfxSx4tDby+3RY120TvBILUthcXaFjFtaeYoelQGJtOMiU52TO7aWJryJVXI8MTmDiRBeMn7Xjc8jA+m3nZH3nWMg3juEDvLC2tt9vDjg272I5dObHmDdFqa176G7nVQ+Zmdc0W2BzSArp2WmBv2OqzDBoYE3F3w7Y09k7wUsA8gCzYNj9bmawW72GMv3pPe/cj8FytsB3J0YOacKEBfZx3l2TAeGbsfKdMIS0/KyuAcxCQF25/WvBlz4nqF4g4mbD7c8hSd7u83IHBoLJ3p6cXBAcHpTiXgF+ni++oUrVgBu9jVO8zyvze+Fqs6YsIdp1h2RABwHdxb14e+bBfE2wEEEj0Slb2dowh0K87p7BPKBZvTW2hdxfCld7pEPjoVvwszMB8dx0oK8hjq+YZXP3F72+NTI6IMNiSObY7TbrITC7VsKP0pNN+wFfAMwX8CEAAaSa0LomwD0DPBsa8JT8fd0GzZ8kp+jxMcxG7XJc52dV4NV1FTa81UvxNnJZM10hl0wqbTeySDm9X2IzPANG5EaVSFfzdTDDZcfVXPt5i+zTKTHW3T3W1+nCwX1zuZC0k1zWqF6JsOUe5I20PG3nrHSfmKrDGbe6OxgR5n9uG26kJnxVMODbV/NA6+o57skgOEAJWIDsH/nKkNtqzD8N1PH48Rgzns79H6PkVUIwJUGOXoM9RVb/VsPii0cwywI8b4RdBXk8TBKVCB0569kq9PM+3eA9ieXxOhRb9v2LbdrwuCISFEUQORKSFEVIoGIkSkgwqeNRVLBjxqTXfOHa3xv6N+rXYw63u8AfGyk2HF1u2tq5LbZzMaEpbMFzf8gTU8wNselK9ruK46K2u/UTzd3u782GOqDV9oS8vmu1HYQrVmw6ivPt22/dXSMZEoCD/q548GpSgiypGFstDuudFswgIqaWtHZ0ONkuHUfEqo5h2hF92PjUXqR2a1vBQcHVe1hWP6HkHe3k2vyaZy5vm3GY5nZ5M4fWz1A4TO3q/6ue6xLvp6uT6XcP1SwmDQabBbArizvfl3U5C6QxXsANrvIOTCu6bReeHt86K2Hcx+FZctNBdjTMmKB7ptDpOJhfZ2eM7UigLb07cnb6fx7JBf3RZoY9A9EYCXwWK8hNI4MPwIIDJ2dJ9ugEBiATfek0ix8oQTxFQxI43RDvAJLTrBBASCNF0eaEOYq3QNoGWN3boe4F3gO28Jjg2Ctjsd7Gfv0kA1A5GYR2f5SKNUzZfTMv7YRNikRPhbOanGzEE4oAHJbMjWYbkEuBWWqhbIsdm8N3L7i+5BJHHzDVH2LBe/j2kWdZEPjxEGIUkQgkpGo7ygQAp0xiNHIE5s99d7zWktz7/drhPhqftjEoRCYRRBACqXo5LvdQ0+1r1jKWfc2Yv/9Z1pOY0BbYy6xrjRywbKX3ChnkmHBD3n66vkGX9dHq/HUGsDYD5OQO15iu7fFA0I6BE6cxmXjWh3cd+GtD7zIuZID0KwY7Sv1F9kSc78jXeM1Ky9wKYNRtMJkNBOE1dv7PDYDGIAs6XAwgDM5h2bN2Ulu
-    alt="My Book Share logo">
+    <!-- Logo must exist at /images/logo.png in your repository -->
+    <img src="images/logo.png" alt="My Book Share logo">
     <span>mybookshare.com Inventory Page</span>
   </div>
   <div class="container">
     <div>
-      <label for="file-input">Upload book cover:</label>
+      <label for="file-input">Upload book cover (JPG/PNG):</label>
       <input type="file" id="file-input" accept=".jpg,.jpeg,.png">
       <label for="email-input">Your email (for interested readers to contact you):</label>
       <input type="email" id="email-input" placeholder="you@example.com">
@@ -162,7 +162,8 @@
         const item = document.createElement('div');
         item.className = 'book-item';
         const img = document.createElement('img');
-        img.src = book.imageData;
+        // Use the relative path from images directory
+        img.src = book.imagePath;
         const titleEl = document.createElement('div');
         titleEl.className = 'book-title';
         titleEl.textContent = book.title;
@@ -184,7 +185,7 @@
         const item = document.createElement('div');
         item.className = 'book-item';
         const img = document.createElement('img');
-        img.src = book.imageData;
+        img.src = book.imagePath;
         const titleEl = document.createElement('div');
         titleEl.className = 'book-title';
         titleEl.textContent = book.title;
@@ -216,7 +217,7 @@
         alert('Please enter a valid email address.');
         return;
       }
-      // Read file as data URL
+      // Read file as data URL for OCR only (image will be stored separately)
       const reader = new FileReader();
       reader.onload = async function(e) {
         const dataUrl = e.target.result;
@@ -233,11 +234,14 @@
           let title = lines.length > 0 ? lines.slice(0, 3).join(' ').substring(0, 100) : 'Untitled';
           // Prompt user to confirm or edit title
           title = prompt('Detected title:', title) || title;
-          // Save book entry
+          // Create a unique filename based on timestamp and original name
+          const uniqueName = Date.now() + '_' + file.name.replace(/\s+/g, '_');
+          const imagePath = 'images/' + uniqueName;
+          // Save book entry (you must manually upload the image to this path in your repository)
           const book = {
             title: title,
             email: email,
-            imageData: dataUrl
+            imagePath: imagePath
           };
           books.push(book);
           saveBooks();
@@ -247,7 +251,7 @@
           // Reset inputs
           fileInput.value = '';
           emailInput.value = '';
-          status.textContent = 'Book added to inventory.';
+          status.textContent = 'Book added to inventory. Please remember to upload the image file to the images directory in your repository.';
         } catch (err) {
           console.error(err);
           status.textContent = 'Error scanning image.';

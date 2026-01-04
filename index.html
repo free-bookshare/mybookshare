@@ -3,58 +3,104 @@
 <head>
   <meta charset="UTF-8">
   <title>MyBookShare Inventory</title>
-  <!-- Load Tesseract.js from a CDN -->
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
   <style>
     body { font-family: Arial, sans-serif; margin: 2rem; }
-    #status { margin-top: 1rem; color: #336699; }
-    #book-list { list-style-type: none; padding: 0; }
-    #book-list li { margin: 0.5rem 0; }
-    .book-title { font-weight: bold; }
+    h1 { margin-bottom: 1rem; }
+    .form-group { margin-bottom: 0.5rem; }
+    #status { margin-top: 0.5rem; color: #336699; }
+    #inventory-grid {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      grid-gap: 1rem;
+    }
+    .book-item {
+      border: 1px solid #ddd;
+      padding: 0.5rem;
+      text-align: center;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .book-item img {
+      max-width: 100%;
+      height: auto;
+      object-fit: cover;
+    }
+    .book-title {
+      font-weight: bold;
+      margin-top: 0.5rem;
+    }
+    .book-email {
+      font-size: 0.8rem;
+      color: #666;
+      margin-top: 0.25rem;
+    }
+    .book-actions {
+      margin-top: 0.5rem;
+    }
+    button { cursor: pointer; }
+    #search-input { margin-top: 1rem; padding: 0.5rem; width: 100%; max-width: 300px; }
   </style>
 </head>
 <body>
   <h1>MyBookShare Inventory</h1>
-  <!-- File input to upload a book cover -->
-  <input type="file" id="file-input" accept="image/*">
-  <button type="button" onclick="processImage()">Upload &amp; Scan</button>
+  <div class="form-group">
+    <label for="file-input">Upload book cover:</label>
+    <input type="file" id="file-input" accept="image/*">
+  </div>
+  <div class="form-group">
+    <label for="email-input">Your email (for interested readers to contact you):</label>
+    <input type="email" id="email-input" placeholder="you@example.com">
+  </div>
+  <button type="button" onclick="processImage()">Upload & Scan</button>
   <div id="status"></div>
-
   <h2>Inventory</h2>
-  <!-- Search box to filter books by title -->
-  <input type="text" id="search-input" placeholder="Search by title..." oninput="filterBooks()">
-  <ul id="book-list"></ul>
-
+  <input type="text" id="search-input" placeholder="Search by title..." oninput="renderBooks()">
+  <div id="inventory-grid"></div>
 <script>
-  // Array to hold book records in memory
-  const books = [];
-
-  // Processes the uploaded image using Tesseract.js
+  let books = [];
+  function loadBooks() {
+    const stored = localStorage.getItem('books');
+    if (stored) {
+      try { books = JSON.parse(stored); } catch (e) { books = []; }
+    }
+  }
+  function saveBooks() {
+    localStorage.setItem('books', JSON.stringify(books));
+  }
   async function processImage() {
-    const input = document.getElementById('file-input');
-    if (!input.files || input.files.length === 0) {
-      alert('Please select an image of the book cover.');
+    const fileInput = document.getElementById('file-input');
+    const emailInput = document.getElementById('email-input');
+    if (!fileInput.files || fileInput.files.length === 0) {
+      alert('Please select an image.');
       return;
     }
-    const file = input.files[0];
+    if (!emailInput.value) {
+      alert('Please provide your email address.');
+      return;
+    }
+    const file = fileInput.files[0];
     const reader = new FileReader();
-
     reader.onload = async () => {
-      // Inform the user that scanning has started
-      document.getElementById('status').textContent = 'Scanning image for text…';
+      const dataUrl = reader.result;
+      document.getElementById('status').textContent = 'Scanning image…';
       try {
-        // Run OCR on the image
-        const result = await Tesseract.recognize(reader.result, 'eng', {
-          logger: m => console.log(m) // optional logging
-        });
-        document.getElementById('status').textContent = 'Scan complete.';
-        // Take the first non-empty line as the tentative title
+        const result = await Tesseract.recognize(dataUrl, 'eng');
         const lines = result.data.text.split('\n').map(l => l.trim()).filter(Boolean);
-        const title = lines.length > 0 ? lines[0] : 'Untitled';
-        // Add the record to the in-memory array
-        books.push({ title: title, fullText: result.data.text, imageData: reader.result });
-        // Update the displayed list
+        let proposedTitle = lines.slice(0, 3).join(' ');
+        if (!proposedTitle) { proposedTitle = 'Untitled Book'; }
+        const title = prompt('Enter the book title:', proposedTitle) || proposedTitle;
+        const newBook = {
+          id: Date.now(),
+          title: title.trim(),
+          email: emailInput.value.trim(),
+          image: dataUrl,
+          status: 'available'
+        };
+        books.push(newBook);
+        saveBooks();
         renderBooks();
+        document.getElementById('status').textContent = 'Book added to inventory.';
+        fileInput.value = '';
       } catch (err) {
         console.error(err);
         document.getElementById('status').textContent = 'Error scanning image.';
@@ -62,31 +108,46 @@
     };
     reader.readAsDataURL(file);
   }
-
-  // Renders all books in the list
   function renderBooks() {
-    const list = document.getElementById('book-list');
-    list.innerHTML = '';
-    books.forEach((book) => {
-      const li = document.createElement('li');
-      li.innerHTML = '<span class="book-title">' + book.title + '</span>';
-      list.appendChild(li);
+    const container = document.getElementById('inventory-grid');
+    container.innerHTML = '';
+    const query = document.getElementById('search-input').value.toLowerCase();
+    books.filter(book => book.title.toLowerCase().includes(query)).forEach(book => {
+      const item = document.createElement('div');
+      item.className = 'book-item';
+      const img = document.createElement('img');
+      img.src = book.image;
+      img.alt = book.title;
+      const title = document.createElement('div');
+      title.className = 'book-title';
+      title.textContent = book.title;
+      const email = document.createElement('div');
+      email.className = 'book-email';
+      email.textContent = 'Contact: ' + book.email;
+      const actions = document.createElement('div');
+      actions.className = 'book-actions';
+      const delBtn = document.createElement('button');
+      delBtn.textContent = 'Delete';
+      delBtn.onclick = () => {
+        const confirmEmail = prompt('To delete, enter your email:');
+        if (confirmEmail && confirmEmail.trim().toLowerCase() === book.email.toLowerCase()) {
+          books = books.filter(b => b.id !== book.id);
+          saveBooks();
+          renderBooks();
+        } else {
+          alert('Email does not match. Cannot delete.');
+        }
+      };
+      actions.appendChild(delBtn);
+      item.appendChild(img);
+      item.appendChild(title);
+      item.appendChild(email);
+      item.appendChild(actions);
+      container.appendChild(item);
     });
   }
-
-  // Filters books based on the search input
-  function filterBooks() {
-    const query = document.getElementById('search-input').value.toLowerCase();
-    const list = document.getElementById('book-list');
-    list.innerHTML = '';
-    books
-      .filter(book => book.title.toLowerCase().includes(query))
-      .forEach(book => {
-        const li = document.createElement('li');
-        li.innerHTML = '<span class="book-title">' + book.title + '</span>';
-        list.appendChild(li);
-      });
-  }
+  loadBooks();
+  renderBooks();
 </script>
 </body>
 </html>

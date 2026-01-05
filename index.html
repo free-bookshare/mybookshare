@@ -6,6 +6,9 @@
   <!-- Load Tesseract.js and EmailJS from CDN -->
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/emailjs-com@2/dist/email.min.js"></script>
+  <!-- Load TensorFlow.js and NSFWJS for content moderation -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.11.0/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/nsfwjs@2.4.2/dist/nsfwjs.min.js"></script>
   <script>
     (function() {
       // Initialize EmailJS; replace with your actual user ID
@@ -53,6 +56,10 @@
     }
     button {
       cursor: pointer;
+    }
+    button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
     }
     #status {
       margin-top: 10px;
@@ -122,6 +129,20 @@
       color: #c5d6ff;
       margin-top: 4px;
     }
+    .loading-spinner {
+      display: inline-block;
+      width: 14px;
+      height: 14px;
+      border: 2px solid #c5d6ff;
+      border-top: 2px solid #265df0;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin-left: 8px;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
   </style>
 </head>
 <body>
@@ -157,6 +178,69 @@
     <div id="inventory-grid"></div>
   </div>
   <script>
+    // NSFW model instance - loaded once on page load
+    let nsfwModel = null;
+    
+    // Load the NSFW model on page load
+    async function loadNSFWModel() {
+      try {
+        console.log('Loading NSFW detection model...');
+        nsfwModel = await nsfwjs.load();
+        console.log('NSFW model loaded successfully');
+      } catch (err) {
+        console.error('Error loading NSFW model:', err);
+        alert('Warning: Content moderation system failed to load. Uploads will proceed without image verification.');
+      }
+    }
+
+    // Check if image is appropriate using NSFWJS
+    async function isImageAppropriate(imgElement) {
+      if (!nsfwModel) {
+        console.warn('NSFW model not loaded, skipping content check');
+        return true; // Allow upload if model failed to load
+      }
+      
+      try {
+        const predictions = await nsfwModel.classify(imgElement);
+        console.log('NSFW predictions:', predictions);
+        
+        // predictions is an array of {className, probability}
+        // Classes: 'Drawing', 'Hentai', 'Neutral', 'Porn', 'Sexy'
+        
+        // Find the probabilities for inappropriate content
+        const porn = predictions.find(p => p.className === 'Porn');
+        const hentai = predictions.find(p => p.className === 'Hentai');
+        const sexy = predictions.find(p => p.className === 'Sexy');
+        
+        // Set thresholds (adjust these values as needed)
+        const PORN_THRESHOLD = 0.60;  // 60% confidence
+        const HENTAI_THRESHOLD = 0.60; // 60% confidence
+        const SEXY_THRESHOLD = 0.80;   // 80% confidence (more lenient for book covers with people)
+        
+        // Reject if any inappropriate category exceeds threshold
+        if (porn && porn.probability > PORN_THRESHOLD) {
+          console.log(`Image rejected: Porn probability ${(porn.probability * 100).toFixed(1)}%`);
+          return false;
+        }
+        
+        if (hentai && hentai.probability > HENTAI_THRESHOLD) {
+          console.log(`Image rejected: Hentai probability ${(hentai.probability * 100).toFixed(1)}%`);
+          return false;
+        }
+        
+        if (sexy && sexy.probability > SEXY_THRESHOLD) {
+          console.log(`Image rejected: Sexy probability ${(sexy.probability * 100).toFixed(1)}%`);
+          return false;
+        }
+        
+        return true;
+        
+      } catch (err) {
+        console.error('Error checking image:', err);
+        return true; // Allow upload on error rather than blocking
+      }
+    }
+
     // Hash password using SHA-256
     async function hashPassword(password) {
       const encoder = new TextEncoder();
@@ -165,12 +249,6 @@
       const hashArray = Array.from(new Uint8Array(hashBuffer));
       const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
       return hashHex;
-    }
-
-    // Placeholder moderation function. Integrate with an external API in production.
-    function isImageAppropriate(dataUrl) {
-      // For now always return true; implement actual moderation logic here.
-      return true;
     }
 
     function validateEmail(email) {
@@ -331,6 +409,7 @@
       const fileInput = document.getElementById('file-input');
       const emailInput = document.getElementById('email-input');
       const passwordInput = document.getElementById('password-input');
+      const uploadButton = document.getElementById('upload-button');
       const status = document.getElementById('status');
       
       if (!fileInput.files || fileInput.files.length === 0) {
@@ -363,64 +442,87 @@
         return;
       }
       
+      // Disable upload button during processing
+      uploadButton.disabled = true;
+      
       // Read file as data URL
       const reader = new FileReader();
       reader.onload = async function(e) {
         const dataUrl = e.target.result;
         
-        // Check if image is appropriate
-        if (!isImageAppropriate(dataUrl)) {
-          alert('The uploaded image does not meet our content guidelines.');
-          return;
-        }
+        // Create an image element for NSFW checking
+        status.innerHTML = 'Checking image content... <span class="loading-spinner"></span>';
+        const img = new Image();
         
-        status.textContent = 'Scanning image for text…';
-        
-        try {
-          const result = await Tesseract.recognize(dataUrl, 'eng', { logger: m => console.log(m) });
-          status.textContent = 'Scan complete.';
+        img.onload = async function() {
+          // Check if image is appropriate
+          const isAppropriate = await isImageAppropriate(img);
           
-          const lines = result.data.text.split('\n').map(l => l.trim()).filter(Boolean);
-          let title = lines.length > 0 ? lines.slice(0, 3).join(' ').substring(0, 100) : 'Untitled';
-          
-          // Prompt user to confirm or edit title
-          title = prompt('Detected title:', title) || title;
-          
-          // Hash the password
-          const passwordHash = await hashPassword(password);
-          
-          // Create book entry with image data stored as base64
-          const book = {
-            title: title,
-            email: email,
-            imageData: dataUrl, // Store the actual image data
-            passwordHash: passwordHash, // Store hashed password
-            uploadDate: new Date().toISOString()
-          };
-          
-          books.push(book);
-          
-          // Try to save
-          if (saveBooks()) {
-            renderBooks();
-            
-            // Send confirmation email
-            sendConfirmationEmail(email, title);
-            
-            // Reset inputs
-            fileInput.value = '';
-            emailInput.value = '';
-            passwordInput.value = '';
-            status.textContent = 'Book successfully added to inventory! Remember your password to delete it later.';
-          } else {
-            // Remove the book we just added since save failed
-            books.pop();
-            status.textContent = 'Failed to save book. Storage may be full.';
+          if (!isAppropriate) {
+            alert('This image does not meet our content guidelines. Please upload a book cover image only.');
+            status.textContent = 'Upload rejected - inappropriate content detected.';
+            uploadButton.disabled = false;
+            return;
           }
-        } catch (err) {
-          console.error(err);
-          status.textContent = 'Error scanning image: ' + err.message;
-        }
+          
+          status.innerHTML = 'Scanning image for text… <span class="loading-spinner"></span>';
+          
+          try {
+            const result = await Tesseract.recognize(dataUrl, 'eng', { logger: m => console.log(m) });
+            status.textContent = 'Scan complete.';
+            
+            const lines = result.data.text.split('\n').map(l => l.trim()).filter(Boolean);
+            let title = lines.length > 0 ? lines.slice(0, 3).join(' ').substring(0, 100) : 'Untitled';
+            
+            // Prompt user to confirm or edit title
+            title = prompt('Detected title:', title) || title;
+            
+            // Hash the password
+            const passwordHash = await hashPassword(password);
+            
+            // Create book entry with image data stored as base64
+            const book = {
+              title: title,
+              email: email,
+              imageData: dataUrl, // Store the actual image data
+              passwordHash: passwordHash, // Store hashed password
+              uploadDate: new Date().toISOString()
+            };
+            
+            books.push(book);
+            
+            // Try to save
+            if (saveBooks()) {
+              renderBooks();
+              
+              // Send confirmation email
+              sendConfirmationEmail(email, title);
+              
+              // Reset inputs
+              fileInput.value = '';
+              emailInput.value = '';
+              passwordInput.value = '';
+              status.textContent = 'Book successfully added to inventory! Remember your password to delete it later.';
+            } else {
+              // Remove the book we just added since save failed
+              books.pop();
+              status.textContent = 'Failed to save book. Storage may be full.';
+            }
+          } catch (err) {
+            console.error(err);
+            status.textContent = 'Error scanning image: ' + err.message;
+          } finally {
+            uploadButton.disabled = false;
+          }
+        };
+        
+        img.onerror = function() {
+          alert('Error loading image for content verification.');
+          status.textContent = 'Upload failed - could not load image.';
+          uploadButton.disabled = false;
+        };
+        
+        img.src = dataUrl;
       };
       
       reader.readAsDataURL(file);
@@ -428,7 +530,8 @@
 
     document.getElementById('upload-button').addEventListener('click', processUpload);
 
-    // Initialize
+    // Initialize - load NSFW model and books
+    loadNSFWModel();
     loadBooks();
     renderBooks();
   </script>

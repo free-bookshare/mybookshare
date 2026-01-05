@@ -6,8 +6,8 @@
   <!-- Load Tesseract.js and EmailJS from CDN -->
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/emailjs-com@2/dist/email.min.js"></script>
-  <!-- Load TensorFlow.js and NSFWJS for content moderation -->
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.11.0/dist/tf.min.js"></script>
+  <!-- Load TensorFlow.js and NSFWJS for content moderation - UPDATED VERSIONS -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.11.0/dist/tf.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/nsfwjs@2.4.2/dist/nsfwjs.min.js"></script>
   <script>
     (function() {
@@ -64,6 +64,14 @@
     #status {
       margin-top: 10px;
       color: #c5d6ff;
+    }
+    .warning-banner {
+      background-color: #ff9800;
+      color: #000;
+      padding: 10px;
+      margin: 10px 0;
+      border-radius: 4px;
+      font-size: 0.9em;
     }
     #inventory-grid {
       display: grid;
@@ -163,6 +171,10 @@
     <span>mybookshare.com Inventory Page</span>
   </div>
   <div class="container">
+    <div id="moderation-warning" class="warning-banner" style="display:none;">
+      ⚠️ Content moderation is currently unavailable. Please only upload appropriate book cover images.
+    </div>
+    
     <div>
       <div class="form-group">
         <label for="file-input">Upload book cover (JPG/PNG):</label>
@@ -198,24 +210,58 @@
     
     // NSFW model instance - loaded once on page load
     let nsfwModel = null;
+    let modelLoadAttempted = false;
     
-    // Load the NSFW model on page load
+    // Load the NSFW model on page load with retry logic
     async function loadNSFWModel() {
+      if (modelLoadAttempted) return;
+      modelLoadAttempted = true;
+      
       try {
         console.log('Loading NSFW detection model...');
-        nsfwModel = await nsfwjs.load();
+        
+        // Check if TensorFlow.js loaded
+        if (typeof tf === 'undefined') {
+          throw new Error('TensorFlow.js failed to load');
+        }
+        
+        // Check if NSFWJS loaded
+        if (typeof nsfwjs === 'undefined') {
+          throw new Error('NSFWJS library failed to load');
+        }
+        
+        // Try to load the model with timeout
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Model loading timeout')), 30000)
+        );
+        
+        nsfwModel = await Promise.race([
+          nsfwjs.load(),
+          timeoutPromise
+        ]);
+        
         console.log('NSFW model loaded successfully');
+        
       } catch (err) {
         console.error('Error loading NSFW model:', err);
-        alert('Warning: Content moderation system failed to load. Uploads will proceed without image verification.');
+        
+        // Show warning banner instead of alert
+        const warningBanner = document.getElementById('moderation-warning');
+        if (warningBanner) {
+          warningBanner.style.display = 'block';
+        }
+        
+        // Model failed to load, but we'll continue without it
+        nsfwModel = null;
       }
     }
 
     // Check if image is appropriate using NSFWJS
     async function isImageAppropriate(imgElement) {
+      // If model didn't load, skip verification but log it
       if (!nsfwModel) {
-        console.warn('NSFW model not loaded, skipping content check');
-        return true; // Allow upload if model failed to load
+        console.warn('NSFW model not available - skipping content verification');
+        return true; // Allow upload but warn user
       }
       
       try {
@@ -520,11 +566,16 @@
         const dataUrl = e.target.result;
         
         // Create an image element for NSFW checking
-        status.innerHTML = 'Checking image content... <span class="loading-spinner"></span>';
+        if (nsfwModel) {
+          status.innerHTML = 'Checking image content... <span class="loading-spinner"></span>';
+        } else {
+          status.innerHTML = 'Processing image... <span class="loading-spinner"></span>';
+        }
+        
         const img = new Image();
         
         img.onload = async function() {
-          // Check if image is appropriate
+          // Check if image is appropriate (only if model loaded)
           const isAppropriate = await isImageAppropriate(img);
           
           if (!isAppropriate) {

@@ -8,8 +8,9 @@
   <script src="https://cdn.jsdelivr.net/npm/emailjs-com@2/dist/email.min.js"></script>
   <script>
     (function() {
-      // Initialize EmailJS - REPLACE WITH YOUR ACTUAL USER ID FROM EMAILJS.COM
-      emailjs.init('YOUR_EMAILJS_USER_ID');
+      // Initialize EmailJS - REPLACE WITH YOUR PUBLIC KEY
+      // Get this from: EmailJS Dashboard → Account → General → Public Key
+      emailjs.init('mStUPqb1pL-tKIfKk');
     })();
   </script>
   <style>
@@ -223,7 +224,7 @@
   </div>
   <div class="container">
     <div class="info-banner">
-      📚 All book uploads are reviewed by our team before appearing in the inventory. You'll receive a confirmation email once your book is approved!
+      📚 All book uploads are reviewed by our team before appearing in the inventory. You'll receive an email once your book is approved!
     </div>
     
     <!-- Admin Panel (only visible when in admin mode) -->
@@ -280,24 +281,10 @@
       return re.test(email);
     }
 
-    function sendUserConfirmationEmail(email, title) {
-      const serviceID = 'YOUR_SERVICE_ID';
-      const templateID = 'YOUR_USER_CONFIRMATION_TEMPLATE_ID';
-      const params = {
-        to_email: email,
-        user_email: email,
-        book_title: title,
-        upload_date: new Date().toLocaleString(),
-        status: 'pending review'
-      };
-      return emailjs.send(serviceID, templateID, params)
-        .then(response => console.log('User confirmation sent', response.status))
-        .catch(error => console.error('User confirmation error', error));
-    }
-
+    // Send admin review notification when book is uploaded
     function sendAdminReviewEmail(email, title, bookId) {
-      const serviceID = 'YOUR_SERVICE_ID';
-      const templateID = 'YOUR_ADMIN_REVIEW_TEMPLATE_ID';
+      const serviceID = 'service_hrwfurl';
+      const templateID = 'template_9iyhtuo'; // Admin notification template
       const adminEmail = 'zdjimas@gmail.com';
       const reviewUrl = window.location.origin + window.location.pathname + '?review=' + bookId;
       const params = {
@@ -310,13 +297,21 @@
         book_id: bookId
       };
       return emailjs.send(serviceID, templateID, params)
-        .then(response => console.log('Admin review email sent', response.status))
-        .catch(error => console.error('Admin review email error', error));
+        .then(response => {
+          console.log('Admin review email sent successfully', response.status);
+          return true;
+        })
+        .catch(error => {
+          console.error('Admin review email error:', error);
+          alert('Warning: Failed to send admin notification email. Error: ' + error.text);
+          return false;
+        });
     }
 
+    // Send approval notification to user when admin approves
     function sendApprovalNotificationEmail(email, title) {
-      const serviceID = 'YOUR_SERVICE_ID';
-      const templateID = 'YOUR_APPROVAL_NOTIFICATION_TEMPLATE_ID';
+      const serviceID = 'service_hrwfurl';
+      const templateID = 'template_la29vmh'; // User approval template
       const params = {
         to_email: email,
         user_email: email,
@@ -324,8 +319,15 @@
         site_url: window.location.origin + window.location.pathname
       };
       return emailjs.send(serviceID, templateID, params)
-        .then(response => console.log('Approval notification sent', response.status))
-        .catch(error => console.error('Approval notification error', error));
+        .then(response => {
+          console.log('Approval notification sent successfully', response.status);
+          return true;
+        })
+        .catch(error => {
+          console.error('Approval notification error:', error);
+          alert('Warning: Failed to send user approval email. Error: ' + error.text);
+          return false;
+        });
     }
 
     let books = [];
@@ -382,7 +384,7 @@
         // Send approval notification to user
         sendApprovalNotificationEmail(book.email, book.title);
         
-        alert('Book approved and uploader notified!');
+        alert('Book approved! User will be notified by email.');
       }
     }
 
@@ -670,7 +672,7 @@
             imageData: dataUrl,
             passwordHash: passwordHash,
             uploadDate: new Date().toISOString(),
-            status: 'pending' // NEW: Books start as pending
+            status: 'pending'
           };
           
           books.push(book);
@@ -681,18 +683,22 @@
               renderPendingBooks();
             }
             
-            status.textContent = 'Sending notifications...';
+            status.textContent = 'Sending admin notification...';
             try {
-              await sendUserConfirmationEmail(email, title);
-              await sendAdminReviewEmail(email, title, bookId);
+              const emailSent = await sendAdminReviewEmail(email, title, bookId);
+              if (emailSent) {
+                status.textContent = 'Book submitted for review! The administrator has been notified.';
+              } else {
+                status.textContent = 'Book saved, but email notification failed. Please check browser console.';
+              }
             } catch (emailError) {
               console.error('Email error:', emailError);
+              status.textContent = 'Book saved, but email notification failed. Error: ' + emailError.message;
             }
             
             fileInput.value = '';
             emailInput.value = '';
             passwordInput.value = '';
-            status.textContent = 'Book submitted for review! You will receive an email once it is approved.';
           } else {
             books.pop();
             status.textContent = 'Failed to save book. Storage may be full.';

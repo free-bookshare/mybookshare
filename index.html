@@ -11,7 +11,7 @@
   <script src="https://cdn.jsdelivr.net/npm/nsfwjs@2.4.2/dist/nsfwjs.min.js"></script>
   <script>
     (function() {
-      // Initialize EmailJS; replace with your actual user ID
+      // Initialize EmailJS - REPLACE WITH YOUR ACTUAL USER ID FROM EMAILJS.COM
       emailjs.init('YOUR_EMAILJS_USER_ID');
     })();
   </script>
@@ -143,6 +143,17 @@
       0% { transform: rotate(0deg); }
       100% { transform: rotate(360deg); }
     }
+    .admin-link {
+      position: fixed;
+      bottom: 10px;
+      right: 10px;
+      font-size: 0.8em;
+      color: #c5d6ff;
+      text-decoration: none;
+    }
+    .admin-link:hover {
+      color: #fff;
+    }
   </style>
 </head>
 <body>
@@ -177,7 +188,14 @@
     <input type="text" id="search-input" placeholder="Search by title..." oninput="filterBooks()">
     <div id="inventory-grid"></div>
   </div>
+  
+  <a href="#" class="admin-link" onclick="enableAdminMode(); return false;">Admin</a>
+  
   <script>
+    // Admin mode variables
+    let adminMode = false;
+    const ADMIN_PASSWORD = 'admin123'; // CHANGE THIS TO A SECURE PASSWORD
+    
     // NSFW model instance - loaded once on page load
     let nsfwModel = null;
     
@@ -256,20 +274,47 @@
       return re.test(email);
     }
 
-    function sendConfirmationEmail(email, title) {
-      // Replace with your EmailJS service and template IDs
+    // Send confirmation email to the user who uploaded
+    function sendUserConfirmationEmail(email, title) {
+      // REPLACE WITH YOUR EMAILJS SERVICE ID AND TEMPLATE ID
+      // Template should include variables: {{user_email}}, {{book_title}}, {{upload_date}}
       const serviceID = 'YOUR_SERVICE_ID';
-      const templateID = 'YOUR_TEMPLATE_ID';
+      const templateID = 'YOUR_USER_CONFIRMATION_TEMPLATE_ID';
       const params = {
+        to_email: email,
         user_email: email,
-        book_title: title
+        book_title: title,
+        upload_date: new Date().toLocaleString()
       };
       return emailjs.send(serviceID, templateID, params)
         .then(function(response) {
-          console.log('Email sent', response.status, response.text);
+          console.log('User confirmation email sent', response.status, response.text);
         })
         .catch(function(error) {
-          console.error('Email error', error);
+          console.error('User confirmation email error', error);
+        });
+    }
+
+    // Send notification email to admin
+    function sendAdminNotificationEmail(email, title) {
+      // REPLACE WITH YOUR EMAILJS SERVICE ID AND TEMPLATE ID
+      // Template should include variables: {{admin_email}}, {{user_email}}, {{book_title}}, {{upload_date}}
+      const serviceID = 'YOUR_SERVICE_ID';
+      const templateID = 'YOUR_ADMIN_NOTIFICATION_TEMPLATE_ID';
+      const adminEmail = 'zdjimas@ctadmin.com';
+      const params = {
+        to_email: adminEmail,
+        admin_email: adminEmail,
+        user_email: email,
+        book_title: title,
+        upload_date: new Date().toLocaleString()
+      };
+      return emailjs.send(serviceID, templateID, params)
+        .then(function(response) {
+          console.log('Admin notification email sent', response.status, response.text);
+        })
+        .catch(function(error) {
+          console.error('Admin notification email error', error);
         });
     }
 
@@ -315,6 +360,19 @@
 
     async function deleteBook(index) {
       const book = books[index];
+      
+      // If admin mode is enabled, allow direct deletion
+      if (adminMode) {
+        if (confirm(`[ADMIN MODE] Delete "${book.title}" uploaded by ${book.email}?`)) {
+          books.splice(index, 1);
+          saveBooks();
+          renderBooks();
+          alert('Book deleted by administrator.');
+        }
+        return;
+      }
+      
+      // Normal user deletion - requires password
       const password = prompt(`Enter the password you set when you uploaded "${book.title}":`);
       
       if (!password) {
@@ -335,6 +393,17 @@
       }
     }
 
+    function enableAdminMode() {
+      const password = prompt('Enter admin password:');
+      if (password === ADMIN_PASSWORD) {
+        adminMode = true;
+        alert('Admin mode enabled. You can now delete any book without a password.');
+        renderBooks(); // Refresh display
+      } else {
+        alert('Incorrect admin password.');
+      }
+    }
+
     function renderBooks() {
       const grid = document.getElementById('inventory-grid');
       grid.innerHTML = '';
@@ -344,7 +413,7 @@
         
         const deleteBtn = document.createElement('button');
         deleteBtn.className = 'delete-btn';
-        deleteBtn.textContent = 'Delete';
+        deleteBtn.textContent = adminMode ? 'Admin Delete' : 'Delete';
         deleteBtn.onclick = () => deleteBook(index);
         
         const img = document.createElement('img');
@@ -380,7 +449,7 @@
         
         const deleteBtn = document.createElement('button');
         deleteBtn.className = 'delete-btn';
-        deleteBtn.textContent = 'Delete';
+        deleteBtn.textContent = adminMode ? 'Admin Delete' : 'Delete';
         deleteBtn.onclick = () => deleteBook(index);
         
         const img = document.createElement('img');
@@ -472,10 +541,23 @@
             status.textContent = 'Scan complete.';
             
             const lines = result.data.text.split('\n').map(l => l.trim()).filter(Boolean);
-            let title = lines.length > 0 ? lines.slice(0, 3).join(' ').substring(0, 100) : 'Untitled';
+            let detectedTitle = lines.length > 0 ? lines.slice(0, 3).join(' ').substring(0, 100) : '';
             
-            // Prompt user to confirm or edit title
-            title = prompt('Detected title:', title) || title;
+            // REQUIRED: User must enter a title - cannot leave blank or cancel
+            let title = '';
+            while (!title || title.trim() === '') {
+              title = prompt('Enter the book title (required):', detectedTitle);
+              if (title === null) {
+                // User clicked cancel
+                alert('Book title is required. Upload cancelled.');
+                uploadButton.disabled = false;
+                return;
+              }
+              title = title.trim();
+              if (title === '') {
+                alert('Book title cannot be empty. Please enter a title.');
+              }
+            }
             
             // Hash the password
             const passwordHash = await hashPassword(password);
@@ -495,14 +577,21 @@
             if (saveBooks()) {
               renderBooks();
               
-              // Send confirmation email
-              sendConfirmationEmail(email, title);
+              // Send confirmation email to user
+              status.textContent = 'Sending confirmation emails...';
+              try {
+                await sendUserConfirmationEmail(email, title);
+                await sendAdminNotificationEmail(email, title);
+              } catch (emailError) {
+                console.error('Email sending error:', emailError);
+                // Continue even if emails fail - book is still saved
+              }
               
               // Reset inputs
               fileInput.value = '';
               emailInput.value = '';
               passwordInput.value = '';
-              status.textContent = 'Book successfully added to inventory! Remember your password to delete it later.';
+              status.textContent = 'Book successfully added! Confirmation emails sent.';
             } else {
               // Remove the book we just added since save failed
               books.pop();

@@ -3,9 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <title>MyBookShare Inventory</title>
-  <!-- Load Tesseract.js and EmailJS from CDN -->
+  <!-- Load Tesseract.js, EmailJS, and Supabase from CDN -->
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script>
     (function() {
       // Initialize EmailJS
@@ -15,6 +16,14 @@
   <script>
     // ImgBB API Configuration
     const IMGBB_API_KEY = 'd2874cf23320c36b80524a4e065e1353';
+    
+    // Supabase Configuration
+    // Get these from: https://app.supabase.com/project/YOUR_PROJECT/settings/api
+    const SUPABASE_URL = 'https://vpswhgppgyngxxxxvfkf.supabase.co'; // Replace with your project URL
+    const SUPABASE_ANON_KEY = 'sb_publishable_adjGINGJHz6FZZCEuarvLw_oFMpDKfX'; // Replace with your anon/public key
+    
+    // Initialize Supabase client
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
   </script>
   <style>
     body {
@@ -52,6 +61,14 @@
     .success-banner {
       background-color: #4caf50;
       color: #fff;
+      padding: 10px;
+      margin: 10px 0;
+      border-radius: 4px;
+      font-size: 0.9em;
+    }
+    .warning-banner {
+      background-color: #ff9800;
+      color: #000;
       padding: 10px;
       margin: 10px 0;
       border-radius: 4px;
@@ -231,9 +248,16 @@
 <body>
   <div id="header">
     <img src="images/logo.png" alt="My Book Share logo" onerror="this.style.display='none'">
-    <span>MYBOOKSHARE.COM Inventory Page</span>
+    <span>mybookshare.com Inventory Page</span>
   </div>
-  
+  <div class="container">
+    <div id="supabase-warning" class="warning-banner" style="display:none;">
+      ⚠️ Supabase not configured. Please add your Supabase URL and Anon Key. See setup instructions.
+    </div>
+    
+    <div class="success-banner">
+      ✓ Shared database enabled - all users see the same inventory!
+    </div>
     
     <div class="info-banner">
       📚 All book uploads are reviewed by our team before appearing in the inventory. You'll receive an email once your book is approved!
@@ -279,6 +303,25 @@
     let adminMode = false;
     const ADMIN_PASSWORD = 'admin123'; // CHANGE THIS TO A SECURE PASSWORD
 
+    let books = [];
+
+    // Check if Supabase is configured
+    window.addEventListener('load', async function() {
+      if (SUPABASE_URL === 'YOUR_SUPABASE_URL' || SUPABASE_ANON_KEY === 'YOUR_SUPABASE_ANON_KEY') {
+        document.getElementById('supabase-warning').style.display = 'block';
+      }
+      
+      await loadBooks();
+      renderBooks();
+      
+      const urlParams = new URLSearchParams(window.location.search);
+      const reviewId = urlParams.get('review');
+      
+      if (reviewId) {
+        alert('Please click "Admin" in the bottom-right corner to review pending uploads.');
+      }
+    });
+
     // Upload image to ImgBB
     async function uploadToImgBB(file) {
       const formData = new FormData();
@@ -296,7 +339,7 @@
         }
 
         const data = await response.json();
-        return data.data.url; // Returns the direct image URL
+        return data.data.url;
       } catch (error) {
         console.error('ImgBB upload error:', error);
         throw error;
@@ -366,30 +409,75 @@
         });
     }
 
-    let books = [];
-
-    function loadBooks() {
+    // Load books from Supabase
+    async function loadBooks() {
       try {
-        const stored = localStorage.getItem('books');
-        if (stored) {
-          books = JSON.parse(stored);
-          updateStorageInfo();
-        }
+        const { data, error } = await supabase
+          .from('books')
+          .select('*')
+          .order('upload_date', { ascending: false });
+
+        if (error) throw error;
+
+        books = data || [];
+        updateStorageInfo();
       } catch (e) {
-        console.error('Error loading books:', e);
+        console.error('Error loading books from Supabase:', e);
+        alert('Failed to load books. Please refresh the page.');
       }
     }
 
-    function saveBooks() {
+    // Save book to Supabase
+    async function saveBook(book) {
       try {
-        localStorage.setItem('books', JSON.stringify(books));
-        updateStorageInfo();
+        const { data, error } = await supabase
+          .from('books')
+          .insert([book])
+          .select();
+
+        if (error) throw error;
+
+        return data[0];
+      } catch (e) {
+        console.error('Error saving book to Supabase:', e);
+        alert('Failed to save book: ' + e.message);
+        return null;
+      }
+    }
+
+    // Update book in Supabase
+    async function updateBook(id, updates) {
+      try {
+        const { data, error } = await supabase
+          .from('books')
+          .update(updates)
+          .eq('id', id)
+          .select();
+
+        if (error) throw error;
+
+        return data[0];
+      } catch (e) {
+        console.error('Error updating book in Supabase:', e);
+        alert('Failed to update book: ' + e.message);
+        return null;
+      }
+    }
+
+    // Delete book from Supabase
+    async function deleteBookFromDB(id) {
+      try {
+        const { error } = await supabase
+          .from('books')
+          .delete()
+          .eq('id', id);
+
+        if (error) throw error;
+
         return true;
       } catch (e) {
-        console.error('Error saving books:', e);
-        if (e.name === 'QuotaExceededError') {
-          alert('Storage quota exceeded. Cannot save more books.');
-        }
+        console.error('Error deleting book from Supabase:', e);
+        alert('Failed to delete book: ' + e.message);
         return false;
       }
     }
@@ -398,51 +486,63 @@
       const info = document.getElementById('storage-info');
       const approvedCount = books.filter(b => b.status === 'approved').length;
       const pendingCount = books.filter(b => b.status === 'pending').length;
-      const storageSize = new Blob([localStorage.getItem('books') || '']).size;
-      const storageKB = (storageSize / 1024).toFixed(2);
-      info.textContent = `Books: ${approvedCount} approved, ${pendingCount} pending | Storage: ${storageKB} KB (unlimited with ImgBB!)`;
+      info.textContent = `Books: ${approvedCount} approved, ${pendingCount} pending | Database: Supabase (shared across all devices!)`;
       
       if (adminMode) {
         document.getElementById('pending-count').textContent = pendingCount;
       }
     }
 
-    function approveBook(index) {
-      const book = books[index];
+    async function approveBook(id) {
+      const book = books.find(b => b.id === id);
+      if (!book) return;
+      
       if (confirm(`Approve "${book.title}" by ${book.email}?`)) {
-        book.status = 'approved';
-        book.approvedDate = new Date().toISOString();
-        saveBooks();
-        renderBooks();
-        renderPendingBooks();
+        const updated = await updateBook(id, {
+          status: 'approved',
+          approved_date: new Date().toISOString()
+        });
         
-        sendApprovalNotificationEmail(book.email, book.title);
-        
-        alert('Book approved! User will be notified by email.');
+        if (updated) {
+          await loadBooks();
+          renderBooks();
+          renderPendingBooks();
+          
+          sendApprovalNotificationEmail(book.email, book.title);
+          
+          alert('Book approved! User will be notified by email.');
+        }
       }
     }
 
-    function rejectBook(index) {
-      const book = books[index];
+    async function rejectBook(id) {
+      const book = books.find(b => b.id === id);
+      if (!book) return;
+      
       if (confirm(`Reject and delete "${book.title}" by ${book.email}?`)) {
-        books.splice(index, 1);
-        saveBooks();
-        renderBooks();
-        renderPendingBooks();
-        alert('Book rejected and deleted.');
+        const deleted = await deleteBookFromDB(id);
+        if (deleted) {
+          await loadBooks();
+          renderBooks();
+          renderPendingBooks();
+          alert('Book rejected and deleted.');
+        }
       }
     }
 
-    async function deleteBook(index) {
-      const book = books[index];
+    async function deleteBook(id) {
+      const book = books.find(b => b.id === id);
+      if (!book) return;
       
       if (adminMode) {
         if (confirm(`[ADMIN MODE] Delete "${book.title}" uploaded by ${book.email}?`)) {
-          books.splice(index, 1);
-          saveBooks();
-          renderBooks();
-          renderPendingBooks();
-          alert('Book deleted by administrator.');
+          const deleted = await deleteBookFromDB(id);
+          if (deleted) {
+            await loadBooks();
+            renderBooks();
+            renderPendingBooks();
+            alert('Book deleted by administrator.');
+          }
         }
         return;
       }
@@ -452,12 +552,14 @@
       
       const hashedInput = await hashPassword(password);
       
-      if (hashedInput === book.passwordHash) {
+      if (hashedInput === book.password_hash) {
         if (confirm('Are you sure you want to delete this book?')) {
-          books.splice(index, 1);
-          saveBooks();
-          renderBooks();
-          alert('Book deleted successfully!');
+          const deleted = await deleteBookFromDB(id);
+          if (deleted) {
+            await loadBooks();
+            renderBooks();
+            alert('Book deleted successfully!');
+          }
         }
       } else {
         alert('Incorrect password. Only the owner can delete this book.');
@@ -489,12 +591,11 @@
       }
       
       pendingBooks.forEach((book) => {
-        const index = books.indexOf(book);
         const item = document.createElement('div');
         item.className = 'book-item pending';
         
         const img = document.createElement('img');
-        img.src = book.imageUrl;
+        img.src = book.image_url;
         img.alt = book.title;
         
         const titleEl = document.createElement('div');
@@ -509,7 +610,7 @@
         dateEl.style.fontSize = '0.8em';
         dateEl.style.color = '#666';
         dateEl.style.marginTop = '4px';
-        dateEl.textContent = 'Uploaded: ' + new Date(book.uploadDate).toLocaleDateString();
+        dateEl.textContent = 'Uploaded: ' + new Date(book.upload_date).toLocaleDateString();
         
         const buttonContainer = document.createElement('div');
         buttonContainer.style.marginTop = '8px';
@@ -517,12 +618,12 @@
         const approveBtn = document.createElement('button');
         approveBtn.className = 'approve-btn';
         approveBtn.textContent = '✓ Approve';
-        approveBtn.onclick = () => approveBook(index);
+        approveBtn.onclick = () => approveBook(book.id);
         
         const rejectBtn = document.createElement('button');
         rejectBtn.className = 'reject-btn';
         rejectBtn.textContent = '✗ Reject';
-        rejectBtn.onclick = () => rejectBook(index);
+        rejectBtn.onclick = () => rejectBook(book.id);
         
         buttonContainer.appendChild(approveBtn);
         buttonContainer.appendChild(rejectBtn);
@@ -548,7 +649,6 @@
       }
       
       visibleBooks.forEach((book) => {
-        const index = books.indexOf(book);
         const item = document.createElement('div');
         item.className = 'book-item';
         if (book.status === 'pending') {
@@ -558,10 +658,10 @@
         const deleteBtn = document.createElement('button');
         deleteBtn.className = 'delete-btn';
         deleteBtn.textContent = adminMode ? 'Admin Delete' : 'Delete';
-        deleteBtn.onclick = () => deleteBook(index);
+        deleteBtn.onclick = () => deleteBook(book.id);
         
         const img = document.createElement('img');
-        img.src = book.imageUrl;
+        img.src = book.image_url;
         img.alt = book.title;
         img.onerror = function() {
           this.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="180" height="220"%3E%3Crect fill="%23ddd" width="180" height="220"/%3E%3Ctext x="50%25" y="50%25" text-anchor="middle" dy=".3em" fill="%23999"%3EImage not found%3C/text%3E%3C/svg%3E';
@@ -600,7 +700,6 @@
       }
       
       filtered.forEach((book) => {
-        const index = books.indexOf(book);
         const item = document.createElement('div');
         item.className = 'book-item';
         if (book.status === 'pending') {
@@ -610,10 +709,10 @@
         const deleteBtn = document.createElement('button');
         deleteBtn.className = 'delete-btn';
         deleteBtn.textContent = adminMode ? 'Admin Delete' : 'Delete';
-        deleteBtn.onclick = () => deleteBook(index);
+        deleteBtn.onclick = () => deleteBook(book.id);
         
         const img = document.createElement('img');
-        img.src = book.imageUrl;
+        img.src = book.image_url;
         img.alt = book.title;
         img.onerror = function() {
           this.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="180" height="220"%3E%3Crect fill="%23ddd" width="180" height="220"/%3E%3Ctext x="50%25" y="50%25" text-anchor="middle" dy=".3em" fill="%23999"%3EImage not found%3C/text%3E%3C/svg%3E';
@@ -656,7 +755,7 @@
         return;
       }
       
-      const maxSize = 32 * 1024 * 1024; // 32MB limit (ImgBB allows up to 32MB)
+      const maxSize = 32 * 1024 * 1024;
       if (file.size > maxSize) {
         alert('Image file is too large. Please use an image smaller than 32MB.');
         return;
@@ -711,15 +810,18 @@
           id: bookId,
           title: title,
           email: email,
-          imageUrl: imageUrl, // Store ImgBB URL
-          passwordHash: passwordHash,
-          uploadDate: new Date().toISOString(),
+          image_url: imageUrl,
+          password_hash: passwordHash,
+          upload_date: new Date().toISOString(),
           status: 'pending'
         };
         
-        books.push(book);
+        // Step 3: Save to Supabase
+        status.innerHTML = 'Saving to database... <span class="loading-spinner"></span>';
+        const savedBook = await saveBook(book);
         
-        if (saveBooks()) {
+        if (savedBook) {
+          await loadBooks();
           renderBooks();
           if (adminMode) {
             renderPendingBooks();
@@ -742,8 +844,7 @@
           emailInput.value = '';
           passwordInput.value = '';
         } else {
-          books.pop();
-          status.textContent = 'Failed to save book. Storage may be full.';
+          status.textContent = 'Failed to save book to database.';
         }
       } catch (err) {
         console.error('Upload error:', err);
@@ -755,19 +856,6 @@
     }
 
     document.getElementById('upload-button').addEventListener('click', processUpload);
-
-    // Initialize on page load
-    window.addEventListener('load', function() {
-      loadBooks();
-      renderBooks();
-      
-      const urlParams = new URLSearchParams(window.location.search);
-      const reviewId = urlParams.get('review');
-      
-      if (reviewId) {
-        alert('Please click "Admin" in the bottom-right corner to review pending uploads.');
-      }
-    });
   </script>
 </body>
 </html>

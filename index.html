@@ -6,11 +6,6 @@
   <!-- Load Tesseract.js and EmailJS from CDN -->
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/emailjs-com@2/dist/email.min.js"></script>
-  
-  <!-- Try loading TensorFlow.js and NSFWJS from UNPKG (alternative CDN) -->
-  <script src="https://unpkg.com/@tensorflow/tfjs@4.2.0/dist/tf.min.js"></script>
-  <script src="https://unpkg.com/nsfwjs@2.4.2/dist/nsfwjs.min.js"></script>
-  
   <script>
     (function() {
       // Initialize EmailJS - REPLACE WITH YOUR ACTUAL USER ID FROM EMAILJS.COM
@@ -42,6 +37,22 @@
     .container {
       padding: 20px;
     }
+    .info-banner {
+      background-color: #2196f3;
+      color: #fff;
+      padding: 10px;
+      margin: 10px 0;
+      border-radius: 4px;
+      font-size: 0.9em;
+    }
+    .pending-badge {
+      background-color: #ff9800;
+      color: #000;
+      padding: 2px 8px;
+      border-radius: 3px;
+      font-size: 0.8em;
+      font-weight: bold;
+    }
     label {
       display: block;
       margin-bottom: 8px;
@@ -63,25 +74,34 @@
       opacity: 0.6;
       cursor: not-allowed;
     }
+    .approve-btn {
+      background-color: #4caf50;
+      color: white;
+      border: none;
+      border-radius: 3px;
+      padding: 4px 8px;
+      cursor: pointer;
+      font-size: 0.8em;
+      margin-right: 4px;
+    }
+    .approve-btn:hover {
+      background-color: #45a049;
+    }
+    .reject-btn {
+      background-color: #f44336;
+      color: white;
+      border: none;
+      border-radius: 3px;
+      padding: 4px 8px;
+      cursor: pointer;
+      font-size: 0.8em;
+    }
+    .reject-btn:hover {
+      background-color: #da190b;
+    }
     #status {
       margin-top: 10px;
       color: #c5d6ff;
-    }
-    .warning-banner {
-      background-color: #ff9800;
-      color: #000;
-      padding: 10px;
-      margin: 10px 0;
-      border-radius: 4px;
-      font-size: 0.9em;
-    }
-    .success-banner {
-      background-color: #4caf50;
-      color: #fff;
-      padding: 10px;
-      margin: 10px 0;
-      border-radius: 4px;
-      font-size: 0.9em;
     }
     #inventory-grid {
       display: grid;
@@ -97,6 +117,10 @@
       padding: 8px;
       text-align: center;
       position: relative;
+    }
+    .book-item.pending {
+      border: 2px solid #ff9800;
+      background-color: #fff3e0;
     }
     .book-item img {
       width: 100%;
@@ -172,6 +196,24 @@
     .admin-link:hover {
       color: #fff;
     }
+    #admin-panel {
+      background-color: #1e4bb8;
+      padding: 15px;
+      margin: 20px 0;
+      border-radius: 4px;
+      display: none;
+    }
+    #admin-panel h3 {
+      margin-top: 0;
+    }
+    .pending-count {
+      background-color: #ff9800;
+      color: #000;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-size: 0.9em;
+      margin-left: 10px;
+    }
   </style>
 </head>
 <body>
@@ -180,7 +222,16 @@
     <span>mybookshare.com Inventory Page</span>
   </div>
   <div class="container">
-    <div id="moderation-status"></div>
+    <div class="info-banner">
+      📚 All book uploads are reviewed by our team before appearing in the inventory. You'll receive a confirmation email once your book is approved!
+    </div>
+    
+    <!-- Admin Panel (only visible when in admin mode) -->
+    <div id="admin-panel">
+      <h3>Admin Review Panel <span id="pending-count" class="pending-count">0</span></h3>
+      <p>Review and approve pending book uploads below. Approved books will appear in the public inventory.</p>
+      <div id="pending-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 16px;"></div>
+    </div>
     
     <div>
       <div class="form-group">
@@ -196,14 +247,14 @@
       <div class="form-group">
         <label for="password-input">Set a password (to delete your book later):</label>
         <input type="password" id="password-input" placeholder="Enter a password" minlength="4">
-        <div class="password-help">Remember this password - you'll need it to delete your book after giving it away. Minimum 4 characters.</div>
+        <div class="password-help">Remember this password - you'll need it to delete your book after it's approved. Minimum 4 characters.</div>
       </div>
       
       <button id="upload-button" type="button">Upload &amp; Scan</button>
       <div id="status"></div>
       <div id="storage-info"></div>
     </div>
-    <h2>Inventory</h2>
+    <h2>Available Books</h2>
     <input type="text" id="search-input" placeholder="Search by title..." oninput="filterBooks()">
     <div id="inventory-grid"></div>
   </div>
@@ -214,137 +265,6 @@
     // Admin mode variables
     let adminMode = false;
     const ADMIN_PASSWORD = 'admin123'; // CHANGE THIS TO A SECURE PASSWORD
-    
-    // NSFW model instance
-    let nsfwModel = null;
-    let modelLoadAttempted = false;
-    let modelLoading = false;
-    
-    // Update moderation status banner
-    function updateModerationStatus(message, type) {
-      const statusDiv = document.getElementById('moderation-status');
-      if (type === 'loading') {
-        statusDiv.className = 'warning-banner';
-        statusDiv.innerHTML = '⏳ ' + message;
-      } else if (type === 'success') {
-        statusDiv.className = 'success-banner';
-        statusDiv.innerHTML = '✓ ' + message;
-      } else if (type === 'error') {
-        statusDiv.className = 'warning-banner';
-        statusDiv.innerHTML = '⚠️ ' + message;
-      } else {
-        statusDiv.style.display = 'none';
-      }
-    }
-    
-    // Load the NSFW model with detailed error checking
-    async function loadNSFWModel() {
-      if (modelLoadAttempted || modelLoading) return;
-      
-      modelLoading = true;
-      modelLoadAttempted = true;
-      
-      updateModerationStatus('Loading content moderation system...', 'loading');
-      
-      try {
-        // Step 1: Check if TensorFlow.js loaded
-        if (typeof tf === 'undefined') {
-          throw new Error('TensorFlow.js library failed to load from CDN');
-        }
-        console.log('✓ TensorFlow.js loaded successfully');
-        
-        // Step 2: Check if NSFWJS loaded
-        if (typeof nsfwjs === 'undefined') {
-          throw new Error('NSFWJS library failed to load from CDN');
-        }
-        console.log('✓ NSFWJS library loaded successfully');
-        
-        // Step 3: Set TensorFlow backend
-        await tf.ready();
-        console.log('✓ TensorFlow backend ready:', tf.getBackend());
-        
-        // Step 4: Load the NSFWJS model with timeout
-        console.log('Loading NSFWJS model...');
-        const loadPromise = nsfwjs.load();
-        const timeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Model loading timeout after 45 seconds')), 45000)
-        );
-        
-        nsfwModel = await Promise.race([loadPromise, timeoutPromise]);
-        
-        console.log('✓ NSFW model loaded successfully!');
-        updateModerationStatus('Content moderation active - inappropriate images will be blocked', 'success');
-        
-        // Hide success message after 5 seconds
-        setTimeout(() => {
-          const statusDiv = document.getElementById('moderation-status');
-          statusDiv.style.display = 'none';
-        }, 5000);
-        
-      } catch (err) {
-        console.error('Content moderation error:', err);
-        console.error('Error details:', {
-          message: err.message,
-          tfLoaded: typeof tf !== 'undefined',
-          nsfwjsLoaded: typeof nsfwjs !== 'undefined',
-          tfBackend: typeof tf !== 'undefined' ? tf.getBackend() : 'N/A'
-        });
-        
-        updateModerationStatus(
-          'Content moderation unavailable. Please only upload appropriate book cover images. ' +
-          'Reason: ' + err.message, 
-          'error'
-        );
-        
-        nsfwModel = null;
-      } finally {
-        modelLoading = false;
-      }
-    }
-
-    // Check if image is appropriate using NSFWJS
-    async function isImageAppropriate(imgElement) {
-      if (!nsfwModel) {
-        console.warn('NSFW model not available - skipping content verification');
-        return true;
-      }
-      
-      try {
-        console.log('Classifying image...');
-        const predictions = await nsfwModel.classify(imgElement);
-        console.log('NSFW predictions:', predictions);
-        
-        const porn = predictions.find(p => p.className === 'Porn');
-        const hentai = predictions.find(p => p.className === 'Hentai');
-        const sexy = predictions.find(p => p.className === 'Sexy');
-        
-        const PORN_THRESHOLD = 0.60;
-        const HENTAI_THRESHOLD = 0.60;
-        const SEXY_THRESHOLD = 0.80;
-        
-        if (porn && porn.probability > PORN_THRESHOLD) {
-          console.log(`Image rejected: Porn ${(porn.probability * 100).toFixed(1)}%`);
-          return false;
-        }
-        
-        if (hentai && hentai.probability > HENTAI_THRESHOLD) {
-          console.log(`Image rejected: Hentai ${(hentai.probability * 100).toFixed(1)}%`);
-          return false;
-        }
-        
-        if (sexy && sexy.probability > SEXY_THRESHOLD) {
-          console.log(`Image rejected: Sexy ${(sexy.probability * 100).toFixed(1)}%`);
-          return false;
-        }
-        
-        console.log('✓ Image passed content check');
-        return true;
-        
-      } catch (err) {
-        console.error('Error checking image:', err);
-        return true;
-      }
-    }
 
     async function hashPassword(password) {
       const encoder = new TextEncoder();
@@ -367,27 +287,45 @@
         to_email: email,
         user_email: email,
         book_title: title,
-        upload_date: new Date().toLocaleString()
+        upload_date: new Date().toLocaleString(),
+        status: 'pending review'
       };
       return emailjs.send(serviceID, templateID, params)
         .then(response => console.log('User confirmation sent', response.status))
         .catch(error => console.error('User confirmation error', error));
     }
 
-    function sendAdminNotificationEmail(email, title) {
+    function sendAdminReviewEmail(email, title, bookId) {
       const serviceID = 'YOUR_SERVICE_ID';
-      const templateID = 'YOUR_ADMIN_NOTIFICATION_TEMPLATE_ID';
-      const adminEmail = 'zdjimas@ctadmin.com';
+      const templateID = 'YOUR_ADMIN_REVIEW_TEMPLATE_ID';
+      const adminEmail = 'zdjimas@gmail.com';
+      const reviewUrl = window.location.origin + window.location.pathname + '?review=' + bookId;
       const params = {
         to_email: adminEmail,
         admin_email: adminEmail,
         user_email: email,
         book_title: title,
-        upload_date: new Date().toLocaleString()
+        upload_date: new Date().toLocaleString(),
+        review_url: reviewUrl,
+        book_id: bookId
       };
       return emailjs.send(serviceID, templateID, params)
-        .then(response => console.log('Admin notification sent', response.status))
-        .catch(error => console.error('Admin notification error', error));
+        .then(response => console.log('Admin review email sent', response.status))
+        .catch(error => console.error('Admin review email error', error));
+    }
+
+    function sendApprovalNotificationEmail(email, title) {
+      const serviceID = 'YOUR_SERVICE_ID';
+      const templateID = 'YOUR_APPROVAL_NOTIFICATION_TEMPLATE_ID';
+      const params = {
+        to_email: email,
+        user_email: email,
+        book_title: title,
+        site_url: window.location.origin + window.location.pathname
+      };
+      return emailjs.send(serviceID, templateID, params)
+        .then(response => console.log('Approval notification sent', response.status))
+        .catch(error => console.error('Approval notification error', error));
     }
 
     let books = [];
@@ -420,10 +358,43 @@
 
     function updateStorageInfo() {
       const info = document.getElementById('storage-info');
-      const booksCount = books.length;
+      const approvedCount = books.filter(b => b.status === 'approved').length;
+      const pendingCount = books.filter(b => b.status === 'pending').length;
       const storageSize = new Blob([localStorage.getItem('books') || '']).size;
       const storageMB = (storageSize / (1024 * 1024)).toFixed(2);
-      info.textContent = `Books stored: ${booksCount} | Storage used: ${storageMB} MB`;
+      info.textContent = `Books: ${approvedCount} approved, ${pendingCount} pending | Storage: ${storageMB} MB`;
+      
+      // Update pending count badge
+      if (adminMode) {
+        document.getElementById('pending-count').textContent = pendingCount;
+      }
+    }
+
+    function approveBook(index) {
+      const book = books[index];
+      if (confirm(`Approve "${book.title}" by ${book.email}?`)) {
+        book.status = 'approved';
+        book.approvedDate = new Date().toISOString();
+        saveBooks();
+        renderBooks();
+        renderPendingBooks();
+        
+        // Send approval notification to user
+        sendApprovalNotificationEmail(book.email, book.title);
+        
+        alert('Book approved and uploader notified!');
+      }
+    }
+
+    function rejectBook(index) {
+      const book = books[index];
+      if (confirm(`Reject and delete "${book.title}" by ${book.email}?`)) {
+        books.splice(index, 1);
+        saveBooks();
+        renderBooks();
+        renderPendingBooks();
+        alert('Book rejected and deleted.');
+      }
     }
 
     async function deleteBook(index) {
@@ -434,6 +405,7 @@
           books.splice(index, 1);
           saveBooks();
           renderBooks();
+          renderPendingBooks();
           alert('Book deleted by administrator.');
         }
         return;
@@ -460,19 +432,92 @@
       const password = prompt('Enter admin password:');
       if (password === ADMIN_PASSWORD) {
         adminMode = true;
-        alert('Admin mode enabled. You can now delete any book without a password.');
+        document.getElementById('admin-panel').style.display = 'block';
+        alert('Admin mode enabled. You can now review pending uploads and manage all books.');
         renderBooks();
+        renderPendingBooks();
       } else {
         alert('Incorrect admin password.');
       }
     }
 
+    function renderPendingBooks() {
+      const grid = document.getElementById('pending-grid');
+      grid.innerHTML = '';
+      
+      const pendingBooks = books.filter(b => b.status === 'pending');
+      
+      if (pendingBooks.length === 0) {
+        grid.innerHTML = '<p style="color: #c5d6ff;">No pending uploads to review.</p>';
+        return;
+      }
+      
+      pendingBooks.forEach((book) => {
+        const index = books.indexOf(book);
+        const item = document.createElement('div');
+        item.className = 'book-item pending';
+        
+        const img = document.createElement('img');
+        img.src = book.imageData;
+        
+        const titleEl = document.createElement('div');
+        titleEl.className = 'book-title';
+        titleEl.textContent = book.title;
+        
+        const emailEl = document.createElement('div');
+        emailEl.className = 'book-email';
+        emailEl.textContent = 'Uploader: ' + book.email;
+        
+        const dateEl = document.createElement('div');
+        dateEl.style.fontSize = '0.8em';
+        dateEl.style.color = '#666';
+        dateEl.style.marginTop = '4px';
+        dateEl.textContent = 'Uploaded: ' + new Date(book.uploadDate).toLocaleDateString();
+        
+        const buttonContainer = document.createElement('div');
+        buttonContainer.style.marginTop = '8px';
+        
+        const approveBtn = document.createElement('button');
+        approveBtn.className = 'approve-btn';
+        approveBtn.textContent = '✓ Approve';
+        approveBtn.onclick = () => approveBook(index);
+        
+        const rejectBtn = document.createElement('button');
+        rejectBtn.className = 'reject-btn';
+        rejectBtn.textContent = '✗ Reject';
+        rejectBtn.onclick = () => rejectBook(index);
+        
+        buttonContainer.appendChild(approveBtn);
+        buttonContainer.appendChild(rejectBtn);
+        
+        item.appendChild(img);
+        item.appendChild(titleEl);
+        item.appendChild(emailEl);
+        item.appendChild(dateEl);
+        item.appendChild(buttonContainer);
+        grid.appendChild(item);
+      });
+    }
+
     function renderBooks() {
       const grid = document.getElementById('inventory-grid');
       grid.innerHTML = '';
-      books.forEach((book, index) => {
+      
+      // Only show approved books to public
+      const visibleBooks = adminMode ? books : books.filter(b => b.status === 'approved');
+      
+      if (visibleBooks.length === 0) {
+        grid.innerHTML = '<p style="color: #c5d6ff; grid-column: 1 / -1;">No books available yet. Check back soon!</p>';
+        return;
+      }
+      
+      visibleBooks.forEach((book) => {
+        const index = books.indexOf(book);
         const item = document.createElement('div');
         item.className = 'book-item';
+        if (book.status === 'pending') {
+          item.classList.add('pending');
+        }
         
         const deleteBtn = document.createElement('button');
         deleteBtn.className = 'delete-btn';
@@ -487,7 +532,10 @@
         
         const titleEl = document.createElement('div');
         titleEl.className = 'book-title';
-        titleEl.textContent = book.title;
+        titleEl.innerHTML = book.title;
+        if (book.status === 'pending' && adminMode) {
+          titleEl.innerHTML += ' <span class="pending-badge">PENDING</span>';
+        }
         
         const emailEl = document.createElement('div');
         emailEl.className = 'book-email';
@@ -505,9 +553,17 @@
       const query = document.getElementById('search-input').value.toLowerCase();
       const grid = document.getElementById('inventory-grid');
       grid.innerHTML = '';
-      books.filter(book => book.title.toLowerCase().includes(query)).forEach((book, index) => {
+      
+      const visibleBooks = adminMode ? books : books.filter(b => b.status === 'approved');
+      const filtered = visibleBooks.filter(book => book.title.toLowerCase().includes(query));
+      
+      filtered.forEach((book) => {
+        const index = books.indexOf(book);
         const item = document.createElement('div');
         item.className = 'book-item';
+        if (book.status === 'pending') {
+          item.classList.add('pending');
+        }
         
         const deleteBtn = document.createElement('button');
         deleteBtn.className = 'delete-btn';
@@ -522,7 +578,10 @@
         
         const titleEl = document.createElement('div');
         titleEl.className = 'book-title';
-        titleEl.textContent = book.title;
+        titleEl.innerHTML = book.title;
+        if (book.status === 'pending' && adminMode) {
+          titleEl.innerHTML += ' <span class="pending-badge">PENDING</span>';
+        }
         
         const emailEl = document.createElement('div');
         emailEl.className = 'book-email';
@@ -578,93 +637,72 @@
       reader.onload = async function(e) {
         const dataUrl = e.target.result;
         
-        if (nsfwModel) {
-          status.innerHTML = 'Checking image content... <span class="loading-spinner"></span>';
-        } else {
-          status.innerHTML = 'Processing image... <span class="loading-spinner"></span>';
-        }
+        status.innerHTML = 'Scanning image for text… <span class="loading-spinner"></span>';
         
-        const img = new Image();
-        
-        img.onload = async function() {
-          const isAppropriate = await isImageAppropriate(img);
+        try {
+          const result = await Tesseract.recognize(dataUrl, 'eng', { logger: m => console.log(m) });
+          status.textContent = 'Scan complete.';
           
-          if (!isAppropriate) {
-            alert('This image does not meet our content guidelines. Please upload a book cover image only.');
-            status.textContent = 'Upload rejected - inappropriate content detected.';
-            uploadButton.disabled = false;
-            return;
+          const lines = result.data.text.split('\n').map(l => l.trim()).filter(Boolean);
+          let detectedTitle = lines.length > 0 ? lines.slice(0, 3).join(' ').substring(0, 100) : '';
+          
+          let title = '';
+          while (!title || title.trim() === '') {
+            title = prompt('Enter the book title (required):', detectedTitle);
+            if (title === null) {
+              alert('Book title is required. Upload cancelled.');
+              uploadButton.disabled = false;
+              return;
+            }
+            title = title.trim();
+            if (title === '') {
+              alert('Book title cannot be empty. Please enter a title.');
+            }
           }
           
-          status.innerHTML = 'Scanning image for text… <span class="loading-spinner"></span>';
+          const passwordHash = await hashPassword(password);
+          const bookId = Date.now().toString();
           
-          try {
-            const result = await Tesseract.recognize(dataUrl, 'eng', { logger: m => console.log(m) });
-            status.textContent = 'Scan complete.';
-            
-            const lines = result.data.text.split('\n').map(l => l.trim()).filter(Boolean);
-            let detectedTitle = lines.length > 0 ? lines.slice(0, 3).join(' ').substring(0, 100) : '';
-            
-            let title = '';
-            while (!title || title.trim() === '') {
-              title = prompt('Enter the book title (required):', detectedTitle);
-              if (title === null) {
-                alert('Book title is required. Upload cancelled.');
-                uploadButton.disabled = false;
-                return;
-              }
-              title = title.trim();
-              if (title === '') {
-                alert('Book title cannot be empty. Please enter a title.');
-              }
+          const book = {
+            id: bookId,
+            title: title,
+            email: email,
+            imageData: dataUrl,
+            passwordHash: passwordHash,
+            uploadDate: new Date().toISOString(),
+            status: 'pending' // NEW: Books start as pending
+          };
+          
+          books.push(book);
+          
+          if (saveBooks()) {
+            renderBooks();
+            if (adminMode) {
+              renderPendingBooks();
             }
             
-            const passwordHash = await hashPassword(password);
-            
-            const book = {
-              title: title,
-              email: email,
-              imageData: dataUrl,
-              passwordHash: passwordHash,
-              uploadDate: new Date().toISOString()
-            };
-            
-            books.push(book);
-            
-            if (saveBooks()) {
-              renderBooks();
-              
-              status.textContent = 'Sending confirmation emails...';
-              try {
-                await sendUserConfirmationEmail(email, title);
-                await sendAdminNotificationEmail(email, title);
-              } catch (emailError) {
-                console.error('Email error:', emailError);
-              }
-              
-              fileInput.value = '';
-              emailInput.value = '';
-              passwordInput.value = '';
-              status.textContent = 'Book successfully added! Confirmation emails sent.';
-            } else {
-              books.pop();
-              status.textContent = 'Failed to save book. Storage may be full.';
+            status.textContent = 'Sending notifications...';
+            try {
+              await sendUserConfirmationEmail(email, title);
+              await sendAdminReviewEmail(email, title, bookId);
+            } catch (emailError) {
+              console.error('Email error:', emailError);
             }
-          } catch (err) {
-            console.error(err);
-            status.textContent = 'Error scanning image: ' + err.message;
-          } finally {
-            uploadButton.disabled = false;
+            
+            fileInput.value = '';
+            emailInput.value = '';
+            passwordInput.value = '';
+            status.textContent = 'Book submitted for review! You will receive an email once it is approved.';
+          } else {
+            books.pop();
+            status.textContent = 'Failed to save book. Storage may be full.';
           }
-        };
-        
-        img.onerror = function() {
-          alert('Error loading image.');
-          status.textContent = 'Upload failed.';
+        } catch (err) {
+          console.error(err);
+          status.textContent = 'Error scanning image: ' + err.message;
+        } finally {
           uploadButton.disabled = false;
-        };
-        
-        img.src = dataUrl;
+        }
       };
       
       reader.readAsDataURL(file);
@@ -672,14 +710,17 @@
 
     document.getElementById('upload-button').addEventListener('click', processUpload);
 
-    // Wait for page to fully load before initializing
+    // Check URL for review parameter
     window.addEventListener('load', function() {
-      console.log('Page loaded, initializing...');
+      const urlParams = new URLSearchParams(window.location.search);
+      const reviewId = urlParams.get('review');
+      
+      if (reviewId) {
+        alert('Please click "Admin" in the bottom-right corner to review pending uploads.');
+      }
+      
       loadBooks();
       renderBooks();
-      
-      // Give scripts time to load, then try to load NSFW model
-      setTimeout(loadNSFWModel, 1000);
     });
   </script>
 </body>

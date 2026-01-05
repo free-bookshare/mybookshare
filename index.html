@@ -8,9 +8,15 @@
   <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
   <script>
     (function() {
-      // Initialize EmailJS with latest SDK version
+      // Initialize EmailJS
       emailjs.init('mStUPqb1pL-tKIfKk');
     })();
+  </script>
+  <script>
+    // Imgur API Configuration
+    // Get your Client ID from: https://api.imgur.com/oauth2/addclient
+    // Choose "OAuth 2 authorization without a callback URL"
+    const IMGUR_CLIENT_ID = 'YOUR_IMGUR_CLIENT_ID'; // REPLACE THIS
   </script>
   <style>
     body {
@@ -40,6 +46,14 @@
     .info-banner {
       background-color: #2196f3;
       color: #fff;
+      padding: 10px;
+      margin: 10px 0;
+      border-radius: 4px;
+      font-size: 0.9em;
+    }
+    .warning-banner {
+      background-color: #ff9800;
+      color: #000;
       padding: 10px;
       margin: 10px 0;
       border-radius: 4px;
@@ -222,6 +236,10 @@
     <span>mybookshare.com Inventory Page</span>
   </div>
   <div class="container">
+    <div id="imgur-warning" class="warning-banner" style="display:none;">
+      ⚠️ Imgur API not configured. Please add your Imgur Client ID to enable uploads. See setup instructions.
+    </div>
+    
     <div class="info-banner">
       📚 All book uploads are reviewed by our team before appearing in the inventory. You'll receive an email once your book is approved!
     </div>
@@ -266,6 +284,46 @@
     let adminMode = false;
     const ADMIN_PASSWORD = 'admin123'; // CHANGE THIS TO A SECURE PASSWORD
 
+    // Check if Imgur is configured
+    window.addEventListener('load', function() {
+      if (IMGUR_CLIENT_ID === 'YOUR_IMGUR_CLIENT_ID') {
+        document.getElementById('imgur-warning').style.display = 'block';
+      }
+      loadBooks();
+      renderBooks();
+    });
+
+    // Upload image to Imgur
+    async function uploadToImgur(file) {
+      if (IMGUR_CLIENT_ID === 'YOUR_IMGUR_CLIENT_ID') {
+        throw new Error('Imgur Client ID not configured. Please add your Client ID.');
+      }
+
+      const formData = new FormData();
+      formData.append('image', file);
+
+      try {
+        const response = await fetch('https://api.imgur.com/3/image', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Client-ID ${IMGUR_CLIENT_ID}`
+          },
+          body: formData
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(`Imgur upload failed: ${errorData.data?.error || response.statusText}`);
+        }
+
+        const data = await response.json();
+        return data.data.link; // Returns the direct image URL
+      } catch (error) {
+        console.error('Imgur upload error:', error);
+        throw error;
+      }
+    }
+
     async function hashPassword(password) {
       const encoder = new TextEncoder();
       const data = encoder.encode(password);
@@ -283,7 +341,7 @@
     // Send admin review notification when book is uploaded
     function sendAdminReviewEmail(email, title, bookId) {
       const serviceID = 'service_hrwfurl';
-      const templateID = 'template_9iyhtuo'; // Admin notification template
+      const templateID = 'template_9iyhtuo';
       const adminEmail = 'zdjimas@gmail.com';
       const reviewUrl = window.location.origin + window.location.pathname + '?review=' + bookId;
       const params = {
@@ -310,7 +368,7 @@
     // Send approval notification to user when admin approves
     function sendApprovalNotificationEmail(email, title) {
       const serviceID = 'service_hrwfurl';
-      const templateID = 'template_la29vmh'; // User approval template
+      const templateID = 'template_la29vmh';
       const params = {
         to_email: email,
         user_email: email,
@@ -362,10 +420,9 @@
       const approvedCount = books.filter(b => b.status === 'approved').length;
       const pendingCount = books.filter(b => b.status === 'pending').length;
       const storageSize = new Blob([localStorage.getItem('books') || '']).size;
-      const storageMB = (storageSize / (1024 * 1024)).toFixed(2);
-      info.textContent = `Books: ${approvedCount} approved, ${pendingCount} pending | Storage: ${storageMB} MB`;
+      const storageKB = (storageSize / 1024).toFixed(2);
+      info.textContent = `Books: ${approvedCount} approved, ${pendingCount} pending | Storage: ${storageKB} KB (unlimited with Imgur!)`;
       
-      // Update pending count badge
       if (adminMode) {
         document.getElementById('pending-count').textContent = pendingCount;
       }
@@ -380,7 +437,6 @@
         renderBooks();
         renderPendingBooks();
         
-        // Send approval notification to user
         sendApprovalNotificationEmail(book.email, book.title);
         
         alert('Book approved! User will be notified by email.');
@@ -459,7 +515,8 @@
         item.className = 'book-item pending';
         
         const img = document.createElement('img');
-        img.src = book.imageData;
+        img.src = book.imageUrl; // Now using Imgur URL
+        img.alt = book.title;
         
         const titleEl = document.createElement('div');
         titleEl.className = 'book-title';
@@ -504,7 +561,6 @@
       const grid = document.getElementById('inventory-grid');
       grid.innerHTML = '';
       
-      // Only show approved books to public
       const visibleBooks = adminMode ? books : books.filter(b => b.status === 'approved');
       
       if (visibleBooks.length === 0) {
@@ -526,9 +582,10 @@
         deleteBtn.onclick = () => deleteBook(index);
         
         const img = document.createElement('img');
-        img.src = book.imageData;
+        img.src = book.imageUrl; // Now using Imgur URL
+        img.alt = book.title;
         img.onerror = function() {
-          this.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="180" height="220"%3E%3Crect fill="%23ddd" width="180" height="220"/%3E%3Ctext x="50%25" y="50%25" text-anchor="middle" dy=".3em" fill="%23999"%3ENo Image%3C/text%3E%3C/svg%3E';
+          this.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="180" height="220"%3E%3Crect fill="%23ddd" width="180" height="220"/%3E%3Ctext x="50%25" y="50%25" text-anchor="middle" dy=".3em" fill="%23999"%3EImage not found%3C/text%3E%3C/svg%3E';
         };
         
         const titleEl = document.createElement('div');
@@ -558,6 +615,11 @@
       const visibleBooks = adminMode ? books : books.filter(b => b.status === 'approved');
       const filtered = visibleBooks.filter(book => book.title.toLowerCase().includes(query));
       
+      if (filtered.length === 0) {
+        grid.innerHTML = '<p style="color: #c5d6ff; grid-column: 1 / -1;">No books found matching your search.</p>';
+        return;
+      }
+      
       filtered.forEach((book) => {
         const index = books.indexOf(book);
         const item = document.createElement('div');
@@ -572,9 +634,10 @@
         deleteBtn.onclick = () => deleteBook(index);
         
         const img = document.createElement('img');
-        img.src = book.imageData;
+        img.src = book.imageUrl;
+        img.alt = book.title;
         img.onerror = function() {
-          this.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="180" height="220"%3E%3Crect fill="%23ddd" width="180" height="220"/%3E%3Ctext x="50%25" y="50%25" text-anchor="middle" dy=".3em" fill="%23999"%3ENo Image%3C/text%3E%3C/svg%3E';
+          this.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="180" height="220"%3E%3Crect fill="%23ddd" width="180" height="220"/%3E%3Ctext x="50%25" y="50%25" text-anchor="middle" dy=".3em" fill="%23999"%3EImage not found%3C/text%3E%3C/svg%3E';
         };
         
         const titleEl = document.createElement('div');
@@ -614,9 +677,9 @@
         return;
       }
       
-      const maxSize = 2 * 1024 * 1024;
+      const maxSize = 10 * 1024 * 1024; // 10MB limit (Imgur handles compression)
       if (file.size > maxSize) {
-        alert('Image file is too large. Please use an image smaller than 2MB.');
+        alert('Image file is too large. Please use an image smaller than 10MB.');
         return;
       }
       
@@ -634,99 +697,93 @@
       
       uploadButton.disabled = true;
       
-      const reader = new FileReader();
-      reader.onload = async function(e) {
-        const dataUrl = e.target.result;
+      try {
+        // Step 1: Upload image to Imgur
+        status.innerHTML = 'Uploading image to Imgur... <span class="loading-spinner"></span>';
+        const imageUrl = await uploadToImgur(file);
+        console.log('Image uploaded to Imgur:', imageUrl);
         
+        // Step 2: Scan image with Tesseract
         status.innerHTML = 'Scanning image for text… <span class="loading-spinner"></span>';
+        const result = await Tesseract.recognize(imageUrl, 'eng', { logger: m => console.log(m) });
+        status.textContent = 'Scan complete.';
         
-        try {
-          const result = await Tesseract.recognize(dataUrl, 'eng', { logger: m => console.log(m) });
-          status.textContent = 'Scan complete.';
-          
-          const lines = result.data.text.split('\n').map(l => l.trim()).filter(Boolean);
-          let detectedTitle = lines.length > 0 ? lines.slice(0, 3).join(' ').substring(0, 100) : '';
-          
-          let title = '';
-          while (!title || title.trim() === '') {
-            title = prompt('Enter the book title (required):', detectedTitle);
-            if (title === null) {
-              alert('Book title is required. Upload cancelled.');
-              uploadButton.disabled = false;
-              return;
-            }
-            title = title.trim();
-            if (title === '') {
-              alert('Book title cannot be empty. Please enter a title.');
-            }
+        const lines = result.data.text.split('\n').map(l => l.trim()).filter(Boolean);
+        let detectedTitle = lines.length > 0 ? lines.slice(0, 3).join(' ').substring(0, 100) : '';
+        
+        let title = '';
+        while (!title || title.trim() === '') {
+          title = prompt('Enter the book title (required):', detectedTitle);
+          if (title === null) {
+            alert('Book title is required. Upload cancelled.');
+            uploadButton.disabled = false;
+            return;
           }
-          
-          const passwordHash = await hashPassword(password);
-          const bookId = Date.now().toString();
-          
-          const book = {
-            id: bookId,
-            title: title,
-            email: email,
-            imageData: dataUrl,
-            passwordHash: passwordHash,
-            uploadDate: new Date().toISOString(),
-            status: 'pending'
-          };
-          
-          books.push(book);
-          
-          if (saveBooks()) {
-            renderBooks();
-            if (adminMode) {
-              renderPendingBooks();
-            }
-            
-            status.textContent = 'Sending admin notification...';
-            try {
-              const emailSent = await sendAdminReviewEmail(email, title, bookId);
-              if (emailSent) {
-                status.textContent = 'Book submitted for review! The administrator has been notified.';
-              } else {
-                status.textContent = 'Book saved, but email notification failed. Please check browser console.';
-              }
-            } catch (emailError) {
-              console.error('Email error:', emailError);
-              status.textContent = 'Book saved, but email notification failed. Error: ' + emailError.message;
-            }
-            
-            fileInput.value = '';
-            emailInput.value = '';
-            passwordInput.value = '';
-          } else {
-            books.pop();
-            status.textContent = 'Failed to save book. Storage may be full.';
+          title = title.trim();
+          if (title === '') {
+            alert('Book title cannot be empty. Please enter a title.');
           }
-        } catch (err) {
-          console.error(err);
-          status.textContent = 'Error scanning image: ' + err.message;
-        } finally {
-          uploadButton.disabled = false;
         }
-      };
-      
-      reader.readAsDataURL(file);
+        
+        const passwordHash = await hashPassword(password);
+        const bookId = Date.now().toString();
+        
+        const book = {
+          id: bookId,
+          title: title,
+          email: email,
+          imageUrl: imageUrl, // Store Imgur URL instead of base64
+          passwordHash: passwordHash,
+          uploadDate: new Date().toISOString(),
+          status: 'pending'
+        };
+        
+        books.push(book);
+        
+        if (saveBooks()) {
+          renderBooks();
+          if (adminMode) {
+            renderPendingBooks();
+          }
+          
+          status.textContent = 'Sending admin notification...';
+          try {
+            const emailSent = await sendAdminReviewEmail(email, title, bookId);
+            if (emailSent) {
+              status.textContent = 'Book submitted for review! The administrator has been notified.';
+            } else {
+              status.textContent = 'Book saved, but email notification failed. Please check browser console.';
+            }
+          } catch (emailError) {
+            console.error('Email error:', emailError);
+            status.textContent = 'Book saved, but email notification failed. Error: ' + emailError.message;
+          }
+          
+          fileInput.value = '';
+          emailInput.value = '';
+          passwordInput.value = '';
+        } else {
+          books.pop();
+          status.textContent = 'Failed to save book. Storage may be full.';
+        }
+      } catch (err) {
+        console.error('Upload error:', err);
+        status.textContent = 'Error: ' + err.message;
+        alert('Upload failed: ' + err.message);
+      } finally {
+        uploadButton.disabled = false;
+      }
     }
 
     document.getElementById('upload-button').addEventListener('click', processUpload);
 
     // Check URL for review parameter
-    window.addEventListener('load', function() {
-      const urlParams = new URLSearchParams(window.location.search);
-      const reviewId = urlParams.get('review');
-      
-      if (reviewId) {
-        alert('Please click "Admin" in the bottom-right corner to review pending uploads.');
-      }
-      
-      loadBooks();
-      renderBooks();
-    });
+    const urlParams = new URLSearchParams(window.location.search);
+    const reviewId = urlParams.get('review');
+    
+    if (reviewId) {
+      alert('Please click "Admin" in the bottom-right corner to review pending uploads.');
+    }
   </script>
 </body>
 </html>

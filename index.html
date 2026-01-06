@@ -1,4 +1,4 @@
- <!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -312,19 +312,40 @@
 
     // Check if Supabase is configured
     window.addEventListener('load', async function() {
+      console.log('========== PAGE LOAD STARTED ==========');
+      console.log('Checking Supabase configuration...');
+      console.log('SUPABASE_URL:', SUPABASE_URL);
+      console.log('SUPABASE_ANON_KEY:', SUPABASE_ANON_KEY ? '(key present, length: ' + SUPABASE_ANON_KEY.length + ')' : '(missing)');
+      console.log('IMGBB_API_KEY:', IMGBB_API_KEY ? '(key present)' : '(missing)');
+      
       if (SUPABASE_URL === 'YOUR_SUPABASE_URL' || SUPABASE_ANON_KEY === 'YOUR_SUPABASE_ANON_KEY') {
+        console.warn('Supabase not configured properly!');
         document.getElementById('supabase-warning').style.display = 'block';
+      } else {
+        console.log('Supabase appears to be configured ✓');
       }
       
-      await loadBooks();
+      console.log('Attempting to load books from database...');
+      try {
+        await loadBooks();
+        console.log('Books loaded successfully!');
+      } catch (e) {
+        console.error('Failed to load books:', e);
+      }
+      
+      console.log('Rendering books to page...');
       renderBooks();
       
       const urlParams = new URLSearchParams(window.location.search);
       const reviewId = urlParams.get('review');
       
       if (reviewId) {
+        console.log('Review ID detected in URL:', reviewId);
         alert('Please click "Admin" in the bottom-right corner to review pending uploads.');
       }
+      
+      console.log('========== PAGE LOAD COMPLETE ==========');
+      console.log('Page is ready! Upload button should work now.');
     });
 
     // Upload image to ImgBB
@@ -423,18 +444,43 @@
     // Load books from Supabase
     async function loadBooks() {
       try {
-        const { data, error } = await supabase
+        console.log('loadBooks: Starting to load books from Supabase...');
+        
+        // Add timeout to prevent infinite hanging
+        const timeout = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Supabase query timed out after 10 seconds')), 10000)
+        );
+        
+        const query = supabase
           .from('books')
           .select('*')
           .order('upload_date', { ascending: false });
+        
+        const { data, error } = await Promise.race([query, timeout]);
 
-        if (error) throw error;
+        if (error) {
+          console.error('loadBooks: Supabase error:', error);
+          throw error;
+        }
 
+        console.log('loadBooks: Successfully loaded', data?.length || 0, 'books');
         books = data || [];
         updateStorageInfo();
       } catch (e) {
-        console.error('Error loading books from Supabase:', e);
-        alert('Failed to load books. Please refresh the page.');
+        console.error('loadBooks: Error loading books from Supabase:', e);
+        console.error('loadBooks: Error details:', e.message);
+        
+        // Don't alert on page load - just log it
+        // The page should still be usable even if initial load fails
+        books = [];
+        updateStorageInfo();
+        
+        // Show warning in status instead of blocking alert
+        const status = document.getElementById('status');
+        if (status) {
+          status.textContent = 'Warning: Could not load existing books from database. ' + e.message;
+          status.style.color = '#ff9800';
+        }
       }
     }
 
@@ -754,49 +800,65 @@
     }
 
     async function processUpload() {
+      console.log('========== UPLOAD STARTED ==========');
       const fileInput = document.getElementById('file-input');
       const emailInput = document.getElementById('email-input');
       const passwordInput = document.getElementById('password-input');
       const uploadButton = document.getElementById('upload-button');
       const status = document.getElementById('status');
       
+      console.log('Step 1: Checking file input...');
       if (!fileInput.files || fileInput.files.length === 0) {
         alert('Please select an image file (.jpg or .png).');
         return;
       }
       
       const file = fileInput.files[0];
+      console.log('File selected:', file.name, file.type, file.size, 'bytes');
+      
+      console.log('Step 2: Validating file type...');
       if (!['image/jpeg', 'image/png'].includes(file.type)) {
         alert('Only JPG and PNG images are allowed.');
         return;
       }
       
+      console.log('Step 3: Checking file size...');
       const maxSize = 32 * 1024 * 1024;
       if (file.size > maxSize) {
         alert('Image file is too large. Please use an image smaller than 32MB.');
         return;
       }
       
+      console.log('Step 4: Validating email...');
       const email = emailInput.value.trim();
+      console.log('Email:', email);
       if (!validateEmail(email)) {
         alert('Please enter a valid email address.');
         return;
       }
       
+      console.log('Step 5: Checking password...');
       const password = passwordInput.value.trim();
       if (!password || password.length < 4) {
         alert('Please enter a password (minimum 4 characters).');
         return;
       }
+      console.log('Password length:', password.length, '✓');
       
+      console.log('Step 6: Disabling upload button...');
       uploadButton.disabled = true;
       
       try {
-        // Step 1: Get book title from user FIRST (no waiting for OCR)
+        console.log('Step 7: About to show title prompt...');
+        console.log('SHOWING PROMPT NOW!');
+        
         let title = '';
         while (!title || title.trim() === '') {
           title = prompt('Enter the book title (required):');
+          console.log('User entered title:', title);
+          
           if (title === null) {
+            console.log('User cancelled prompt');
             alert('Book title is required. Upload cancelled.');
             uploadButton.disabled = false;
             status.textContent = '';
@@ -804,18 +866,24 @@
           }
           title = title.trim();
           if (title === '') {
+            console.log('Title was empty, asking again...');
             alert('Book title cannot be empty. Please enter a title.');
           }
         }
         
-        // Step 2: Upload image to ImgBB
+        console.log('Step 8: Title received:', title);
+        console.log('Step 9: Starting ImgBB upload...');
         status.innerHTML = 'Uploading image to ImgBB... <span class="loading-spinner"></span>';
-        console.log('Starting ImgBB upload...');
-        const imageUrl = await uploadToImgBB(file);
-        console.log('Image uploaded to ImgBB:', imageUrl);
         
+        const imageUrl = await uploadToImgBB(file);
+        console.log('Step 10: ImgBB upload complete:', imageUrl);
+        
+        console.log('Step 11: Hashing password...');
         const passwordHash = await hashPassword(password);
+        console.log('Password hashed ✓');
+        
         const bookId = Date.now().toString();
+        console.log('Step 12: Book ID generated:', bookId);
         
         const book = {
           id: bookId,
@@ -827,24 +895,31 @@
           status: 'pending'
         };
         
-        // Step 3: Save to Supabase
+        console.log('Step 13: Book object created:', book);
+        console.log('Step 14: Saving to Supabase...');
         status.innerHTML = 'Saving to database... <span class="loading-spinner"></span>';
-        console.log('Saving to Supabase...');
+        
         const savedBook = await saveBook(book);
+        console.log('Step 15: Save result:', savedBook);
         
         if (savedBook) {
+          console.log('Step 16: Reloading books from database...');
           await loadBooks();
+          console.log('Step 17: Rendering books...');
           renderBooks();
           if (adminMode) {
             renderPendingBooks();
           }
           
+          console.log('Step 18: Sending admin email...');
           status.textContent = 'Sending admin notification...';
           try {
             const emailSent = await sendAdminReviewEmail(email, title, bookId);
             if (emailSent) {
+              console.log('Step 19: Email sent successfully!');
               status.textContent = 'Book submitted for review! The administrator has been notified.';
             } else {
+              console.log('Step 19: Email failed');
               status.textContent = 'Book saved, but email notification failed. Please check browser console.';
             }
           } catch (emailError) {
@@ -852,17 +927,24 @@
             status.textContent = 'Book saved, but email notification failed. Error: ' + emailError.message;
           }
           
+          console.log('Step 20: Clearing form...');
           fileInput.value = '';
           emailInput.value = '';
           passwordInput.value = '';
+          console.log('========== UPLOAD COMPLETE ==========');
         } else {
+          console.error('Step 15: Save failed, savedBook is null');
           status.textContent = 'Failed to save book to database.';
         }
       } catch (err) {
-        console.error('Upload error:', err);
+        console.error('========== UPLOAD ERROR ==========');
+        console.error('Error details:', err);
+        console.error('Error message:', err.message);
+        console.error('Error stack:', err.stack);
         status.textContent = 'Error: ' + err.message;
-        alert('Upload failed: ' + err.message);
+        alert('Upload failed: ' + err.message + '\n\nCheck browser console (F12) for details.');
       } finally {
+        console.log('Step FINAL: Re-enabling upload button...');
         uploadButton.disabled = false;
       }
     }

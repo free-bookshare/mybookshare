@@ -298,7 +298,7 @@
     const SUPABASE_ANON_KEY = 'sb_publishable_adjGINGJHz6FZZCEuarvLw_oFMpDKfX';
     
     // Initialize Supabase client
-    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
     
     // =================================================================
     // MAIN APPLICATION CODE
@@ -451,7 +451,7 @@
           setTimeout(() => reject(new Error('Supabase query timed out after 10 seconds')), 10000)
         );
         
-        const query = supabase
+        const query = supabaseClient
           .from('books')
           .select('*')
           .order('upload_date', { ascending: false });
@@ -488,7 +488,7 @@
     async function saveBook(book) {
       try {
         console.log('saveBook called with:', book);
-        const { data, error } = await supabase
+        const { data, error } = await supabaseClient
           .from('books')
           .insert([book])
           .select();
@@ -510,7 +510,7 @@
     // Update book in Supabase
     async function updateBook(id, updates) {
       try {
-        const { data, error } = await supabase
+        const { data, error } = await supabaseClient
           .from('books')
           .update(updates)
           .eq('id', id)
@@ -529,7 +529,7 @@
     // Delete book from Supabase
     async function deleteBookFromDB(id) {
       try {
-        const { error } = await supabase
+        const { error } = await supabaseClient
           .from('books')
           .delete()
           .eq('id', id);

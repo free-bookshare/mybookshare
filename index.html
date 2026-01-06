@@ -212,6 +212,22 @@
     .admin-link:hover {
       color: #fff;
     }
+    .back-button {
+      display: inline-block;
+      background-color: #fff;
+      color: #1e4bb8;
+      padding: 10px 25px;
+      border-radius: 5px;
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 1rem;
+      transition: all 0.3s ease;
+    }
+    .back-button:hover {
+      background-color: #e3f2fd;
+      transform: translateX(-3px);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    }
     #admin-panel {
       background-color: #1e4bb8;
       padding: 15px;
@@ -237,6 +253,13 @@
     <img src="images/logo.png" alt="My Book Share logo" onerror="this.style.display='none'">
     <span>mybookshare.com Inventory Page</span>
   </div>
+  
+  <div style="text-align: center; padding: 15px 20px; background-color: #1e4bb8;">
+    <a href="https://mybookshare.com" class="back-button">
+      ← Back to Main Site
+    </a>
+  </div>
+  
   <div class="container">
     <div id="supabase-warning" class="warning-banner" style="display:none;">
       ⚠️ Supabase not configured. Please add your Supabase URL and Anon Key. See setup instructions.

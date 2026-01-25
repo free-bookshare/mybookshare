@@ -266,11 +266,7 @@
     </div>
     
     <div class="success-banner">
-      ✓ Shared database enabled - all users see the same inventory!
-    </div>
-    
-    <div class="info-banner" id="mobile-notice" style="display:none; background-color: #ff9800; color: #000;">
-      📱 <strong>Mobile Users:</strong> If upload fails, try using a desktop/laptop browser. Some mobile browsers may experience issues with image uploads.
+      Welcome to the Inventory Site!
     </div>
     
     <div class="info-banner">
@@ -321,8 +317,8 @@
     const IMGBB_API_KEY = 'd2874cf23320c36b80524a4e065e1353';
     
     // Supabase Configuration
-    const SUPABASE_URL = 'https://uwpqyzafhxayczyotmmn.supabase.co';
-    const SUPABASE_ANON_KEY = 'sb_publishable_ZUwFKLQjF5Dpx64jmJxT6A_7bYB1GDq';
+    const SUPABASE_URL = 'https://vpswhgppgyngxxxxvfkf.supabase.co';
+    const SUPABASE_ANON_KEY = 'sb_publishable_adjGINGJHz6FZZCEuarvLw_oFMpDKfX';
     
     // Initialize Supabase client
     const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -344,13 +340,6 @@
       console.log('SUPABASE_URL:', SUPABASE_URL);
       console.log('SUPABASE_ANON_KEY:', SUPABASE_ANON_KEY ? '(key present, length: ' + SUPABASE_ANON_KEY.length + ')' : '(missing)');
       console.log('IMGBB_API_KEY:', IMGBB_API_KEY ? '(key present)' : '(missing)');
-      
-      // Check if mobile browser
-      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-      if (isMobile) {
-        console.log('Mobile browser detected');
-        document.getElementById('mobile-notice').style.display = 'block';
-      }
       
       if (SUPABASE_URL === 'YOUR_SUPABASE_URL' || SUPABASE_ANON_KEY === 'YOUR_SUPABASE_ANON_KEY') {
         console.warn('Supabase not configured properly!');
@@ -385,30 +374,14 @@
     // Upload image to ImgBB
     async function uploadToImgBB(file) {
       console.log('uploadToImgBB called with file:', file.name, file.size, 'bytes');
-      
-      // Compress image if it's too large (common with iPhone photos)
-      let fileToUpload = file;
-      if (file.size > 2 * 1024 * 1024) { // If larger than 2MB
-        console.log('Image is large, attempting to compress...');
-        try {
-          fileToUpload = await compressImage(file, 1920, 0.85); // Max 1920px width, 85% quality
-          console.log('Compressed from', file.size, 'to', fileToUpload.size, 'bytes');
-        } catch (e) {
-          console.warn('Compression failed, using original:', e);
-        }
-      }
-      
       const formData = new FormData();
-      formData.append('image', fileToUpload);
+      formData.append('image', file);
 
       try {
         console.log('Sending request to ImgBB API...');
         const response = await fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_API_KEY}`, {
           method: 'POST',
-          body: formData,
-          headers: {
-            // Don't set Content-Type - let browser set it with boundary
-          }
+          body: formData
         });
 
         console.log('ImgBB response status:', response.status);
@@ -416,12 +389,6 @@
         if (!response.ok) {
           const errorData = await response.json();
           console.error('ImgBB error response:', errorData);
-          
-          // Check if it's a mobile blocking issue
-          if (response.status === 403) {
-            throw new Error('ImgBB blocked the upload. This sometimes happens on mobile browsers. Please try: (1) Use desktop browser, or (2) Use a smaller image file, or (3) Try again in a few minutes.');
-          }
-          
           throw new Error(`ImgBB upload failed: ${errorData.error?.message || response.statusText}`);
         }
 
@@ -432,54 +399,6 @@
         console.error('ImgBB upload error:', error);
         throw error;
       }
-    }
-    
-    // Compress image for better mobile support
-    async function compressImage(file, maxWidth, quality) {
-      return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = function(e) {
-          const img = new Image();
-          img.onload = function() {
-            const canvas = document.createElement('canvas');
-            let width = img.width;
-            let height = img.height;
-            
-            // Scale down if too large
-            if (width > maxWidth) {
-              height = (height * maxWidth) / width;
-              width = maxWidth;
-            }
-            
-            canvas.width = width;
-            canvas.height = height;
-            
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(img, 0, 0, width, height);
-            
-            canvas.toBlob(
-              (blob) => {
-                if (blob) {
-                  // Create a new File object from the blob
-                  const compressedFile = new File([blob], file.name, {
-                    type: 'image/jpeg',
-                    lastModified: Date.now()
-                  });
-                  resolve(compressedFile);
-                } else {
-                  reject(new Error('Canvas to Blob failed'));
-                }
-              },
-              'image/jpeg',
-              quality
-            );
-          };
-          img.onerror = reject;
-          img.src = e.target.result;
-        };
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
     }
 
     async function hashPassword(password) {

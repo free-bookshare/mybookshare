@@ -1,600 +1,407 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8" />
   <title>MyBookShare Inventory</title>
+
   <!-- Load EmailJS and Supabase from CDN -->
   <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script>
-    (function() {
-      // Initialize EmailJS
-      emailjs.init('mStUPqb1pL-tKIfKk');
-    })();
-  </script>
+
+  <!--
+    CONFIG INSTRUCTIONS (IMPORTANT)
+
+    This index.html does NOT hardcode keys anymore.
+    It expects a global config object:
+
+      window.MYBOOKSHARE_CONFIG = {
+        SUPABASE_URL: "https://xxxx.supabase.co",
+        SUPABASE_ANON_KEY: "your_anon_key",
+        IMGBB_API_KEY: "your_imgbb_key",
+        EMAILJS_PUBLIC_KEY: "your_emailjs_public_key",
+        EMAILJS_SERVICE_ID: "service_xxx",
+        EMAILJS_ADMIN_REVIEW_TEMPLATE_ID: "template_xxx",
+        EMAILJS_APPROVAL_TEMPLATE_ID: "template_xxx",
+        ADMIN_PASSWORD_SHA256: "sha256_hash_of_admin_password"
+      };
+
+    Options:
+    1) Create a config.js in the SAME folder as index.html and add:
+         window.MYBOOKSHARE_CONFIG = { ... };
+       Then include it BEFORE this script runs. (Recommended for simplicity.)
+       Example tag to add in <head> above:
+         <script src="./config.js"></script>
+
+    2) For quick testing, open DevTools console and paste:
+         window.MYBOOKSHARE_CONFIG = { ... };
+       then reload.
+
+    NOTE: Anything used in browser is NOT truly secret.
+  -->
+
   <style>
-    body {
-      margin: 0;
-      font-family: Arial, sans-serif;
-      background-color: #265df0;
-      color: #fff;
+    body { margin: 0; font-family: Arial, sans-serif; background-color: #265df0; color: #fff; }
+    #header { background-color: #1e4bb8; display:flex; align-items:center; justify-content:center; padding:20px; }
+    #header img { height: 50px; margin-right: 10px; }
+    #header span { font-size: 1.8rem; font-weight: 600; }
+    .container { padding: 20px; }
+
+    .info-banner { background-color:#2196f3; color:#fff; padding:10px; margin:10px 0; border-radius:4px; font-size:0.9em; }
+    .success-banner { background-color:#4caf50; color:#fff; padding:10px; margin:10px 0; border-radius:4px; font-size:0.9em; }
+    .warning-banner { background-color:#ff9800; color:#000; padding:10px; margin:10px 0; border-radius:4px; font-size:0.9em; }
+
+    .pending-badge { background-color:#ff9800; color:#000; padding:2px 8px; border-radius:3px; font-size:0.8em; font-weight:bold; }
+
+    label { display:block; margin-bottom:8px; color:#fff; }
+    input[type="file"], input[type="email"], input[type="password"], input[type="text"], button {
+      margin-right:8px; padding:6px 10px; font-size:1rem;
     }
-    #header {
-      background-color: #1e4bb8;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 20px;
-    }
-    #header img {
-      height: 50px;
-      margin-right: 10px;
-    }
-    #header span {
-      font-size: 1.8rem;
-      font-weight: 600;
-    }
-    .container {
-      padding: 20px;
-    }
-    .info-banner {
-      background-color: #2196f3;
-      color: #fff;
-      padding: 10px;
-      margin: 10px 0;
-      border-radius: 4px;
-      font-size: 0.9em;
-    }
-    .success-banner {
-      background-color: #4caf50;
-      color: #fff;
-      padding: 10px;
-      margin: 10px 0;
-      border-radius: 4px;
-      font-size: 0.9em;
-    }
-    .warning-banner {
-      background-color: #ff9800;
-      color: #000;
-      padding: 10px;
-      margin: 10px 0;
-      border-radius: 4px;
-      font-size: 0.9em;
-    }
-    .pending-badge {
-      background-color: #ff9800;
-      color: #000;
-      padding: 2px 8px;
-      border-radius: 3px;
-      font-size: 0.8em;
-      font-weight: bold;
-    }
-    label {
-      display: block;
-      margin-bottom: 8px;
-      color: #fff;
-    }
-    input[type="file"],
-    input[type="email"],
-    input[type="password"],
-    input[type="text"],
-    button {
-      margin-right: 8px;
-      padding: 6px 10px;
-      font-size: 1rem;
-    }
-    button {
-      cursor: pointer;
-    }
-    button:disabled {
-      opacity: 0.6;
-      cursor: not-allowed;
-    }
-    .approve-btn {
-      background-color: #4caf50;
-      color: white;
-      border: none;
-      border-radius: 3px;
-      padding: 4px 8px;
-      cursor: pointer;
-      font-size: 0.8em;
-      margin-right: 4px;
-    }
-    .approve-btn:hover {
-      background-color: #45a049;
-    }
-    .reject-btn {
-      background-color: #f44336;
-      color: white;
-      border: none;
-      border-radius: 3px;
-      padding: 4px 8px;
-      cursor: pointer;
-      font-size: 0.8em;
-    }
-    .reject-btn:hover {
-      background-color: #da190b;
-    }
-    #status {
-      margin-top: 10px;
-      color: #c5d6ff;
-    }
-    #inventory-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-      gap: 16px;
-      margin-top: 20px;
-    }
-    .book-item {
-      background-color: #fff;
-      color: #000;
-      border: 1px solid #ccc;
-      border-radius: 4px;
-      padding: 8px;
-      text-align: center;
-      position: relative;
-    }
-    .book-item.pending {
-      border: 2px solid #ff9800;
-      background-color: #fff3e0;
-    }
-    .book-item img {
-      width: 100%;
-      height: 220px;
-      object-fit: contain;
-      border-bottom: 1px solid #ddd;
-    }
-    .book-title {
-      font-weight: bold;
-      margin-top: 8px;
-    }
-    .book-email {
-      font-size: 0.9em;
-      color: #555;
-      margin-top: 4px;
-    }
-    .delete-btn {
-      position: absolute;
-      top: 4px;
-      right: 4px;
-      background-color: #ff4444;
-      color: white;
-      border: none;
-      border-radius: 3px;
-      padding: 4px 8px;
-      cursor: pointer;
-      font-size: 0.8em;
-    }
-    .delete-btn:hover {
-      background-color: #cc0000;
-    }
-    #search-input {
-      padding: 6px 10px;
-      width: 250px;
-      margin-bottom: 10px;
-      color: #000;
-    }
-    #storage-info {
-      margin-top: 10px;
-      font-size: 0.9em;
-      color: #c5d6ff;
-    }
-    .form-group {
-      margin-bottom: 15px;
-    }
-    .password-help {
-      font-size: 0.85em;
-      color: #c5d6ff;
-      margin-top: 4px;
-    }
+    button { cursor:pointer; }
+    button:disabled { opacity:0.6; cursor:not-allowed; }
+
+    .approve-btn { background-color:#4caf50; color:white; border:none; border-radius:3px; padding:4px 8px; cursor:pointer; font-size:0.8em; margin-right:4px; }
+    .approve-btn:hover { background-color:#45a049; }
+    .reject-btn { background-color:#f44336; color:white; border:none; border-radius:3px; padding:4px 8px; cursor:pointer; font-size:0.8em; }
+    .reject-btn:hover { background-color:#da190b; }
+
+    #status { margin-top:10px; color:#c5d6ff; }
+    #inventory-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(180px, 1fr)); gap:16px; margin-top:20px; }
+
+    .book-item { background-color:#fff; color:#000; border:1px solid #ccc; border-radius:4px; padding:8px; text-align:center; position:relative; }
+    .book-item.pending { border:2px solid #ff9800; background-color:#fff3e0; }
+    .book-item img { width:100%; height:220px; object-fit:contain; border-bottom:1px solid #ddd; }
+
+    .book-title { font-weight:bold; margin-top:8px; }
+    .book-email { font-size:0.9em; color:#555; margin-top:4px; }
+
+    .delete-btn { position:absolute; top:4px; right:4px; background-color:#ff4444; color:white; border:none; border-radius:3px; padding:4px 8px; cursor:pointer; font-size:0.8em; }
+    .delete-btn:hover { background-color:#cc0000; }
+
+    #search-input { padding:6px 10px; width:250px; margin-bottom:10px; color:#000; }
+    #storage-info { margin-top:10px; font-size:0.9em; color:#c5d6ff; }
+
+    .form-group { margin-bottom:15px; }
+    .password-help { font-size:0.85em; color:#c5d6ff; margin-top:4px; }
+
     .loading-spinner {
-      display: inline-block;
-      width: 14px;
-      height: 14px;
-      border: 2px solid #c5d6ff;
-      border-top: 2px solid #265df0;
-      border-radius: 50%;
-      animation: spin 1s linear infinite;
-      margin-left: 8px;
+      display:inline-block; width:14px; height:14px;
+      border:2px solid #c5d6ff; border-top:2px solid #265df0;
+      border-radius:50%; animation:spin 1s linear infinite; margin-left:8px;
     }
-    @keyframes spin {
-      0% { transform: rotate(0deg); }
-      100% { transform: rotate(360deg); }
-    }
-    .admin-link {
-      position: fixed;
-      bottom: 10px;
-      right: 10px;
-      font-size: 0.8em;
-      color: #c5d6ff;
-      text-decoration: none;
-    }
-    .admin-link:hover {
-      color: #fff;
-    }
+    @keyframes spin { 0%{ transform:rotate(0deg);} 100%{ transform:rotate(360deg);} }
+
+    .admin-link { position:fixed; bottom:10px; right:10px; font-size:0.8em; color:#c5d6ff; text-decoration:none; }
+    .admin-link:hover { color:#fff; }
+
     .back-button {
-      display: inline-block;
-      background-color: #fff;
-      color: #1e4bb8;
-      padding: 10px 25px;
-      border-radius: 5px;
-      text-decoration: none;
-      font-weight: 600;
-      font-size: 1rem;
-      transition: all 0.3s ease;
+      display:inline-block; background-color:#fff; color:#1e4bb8;
+      padding:10px 25px; border-radius:5px; text-decoration:none;
+      font-weight:600; font-size:1rem; transition:all 0.3s ease;
     }
-    .back-button:hover {
-      background-color: #e3f2fd;
-      transform: translateX(-3px);
-      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
-    }
-    #admin-panel {
-      background-color: #1e4bb8;
-      padding: 15px;
-      margin: 20px 0;
-      border-radius: 4px;
-      display: none;
-    }
-    #admin-panel h3 {
-      margin-top: 0;
-    }
-    .pending-count {
-      background-color: #ff9800;
-      color: #000;
-      padding: 2px 8px;
-      border-radius: 10px;
-      font-size: 0.9em;
-      margin-left: 10px;
-    }
+    .back-button:hover { background-color:#e3f2fd; transform:translateX(-3px); box-shadow:0 2px 8px rgba(0,0,0,0.2); }
+
+    #admin-panel { background-color:#1e4bb8; padding:15px; margin:20px 0; border-radius:4px; display:none; }
+    #admin-panel h3 { margin-top:0; }
+    .pending-count { background-color:#ff9800; color:#000; padding:2px 8px; border-radius:10px; font-size:0.9em; margin-left:10px; }
   </style>
 </head>
+
 <body>
   <div id="header">
     <img src="images/logo.png" alt="My Book Share logo" onerror="this.style.display='none'">
     <span>mybookshare.com Inventory Page</span>
   </div>
-  
-  <div style="text-align: center; padding: 15px 20px; background-color: #1e4bb8;">
-    <a href="https://mybookshare.com" class="back-button">
-      ← Back to Main Site
-    </a>
+
+  <div style="text-align:center; padding:15px 20px; background-color:#1e4bb8;">
+    <a href="https://mybookshare.com" class="back-button">← Back to Main Site</a>
   </div>
-  
+
   <div class="container">
-    <div id="supabase-warning" class="warning-banner" style="display:none;">
-      ⚠️ Supabase not configured. Please add your Supabase URL and Anon Key. See setup instructions.
+    <div id="config-warning" class="warning-banner" style="display:none;">
+      ⚠️ Site config not set. Please provide Supabase + ImgBB + EmailJS config.
+      (See comments in index.html)
     </div>
-    
-    <div class="success-banner">
-      Welcome to the Inventory Site!
-    </div>
-    
+
+    <div class="success-banner">Welcome to the Inventory Site!</div>
+
     <div class="info-banner">
-      📚 All book uploads are reviewed by our team before appearing in the inventory. You'll receive an email once your book is approved!
+      📚 All book uploads are reviewed by our team before appearing in the inventory.
+      You'll receive an email once your book is approved!
     </div>
-    
-    <!-- Admin Panel (only visible when in admin mode) -->
+
+    <!-- Admin Panel -->
     <div id="admin-panel">
       <h3>Admin Review Panel <span id="pending-count" class="pending-count">0</span></h3>
       <p>Review and approve pending book uploads below. Approved books will appear in the public inventory.</p>
-      <div id="pending-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 16px;"></div>
+      <div id="pending-grid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(180px, 1fr)); gap:16px;"></div>
     </div>
-    
+
     <div>
       <div class="form-group">
         <label for="file-input">Upload book cover (JPG/PNG):</label>
         <input type="file" id="file-input" accept=".jpg,.jpeg,.png">
       </div>
-      
+
       <div class="form-group">
         <label for="email-input">Your email (for interested readers to contact you):</label>
         <input type="email" id="email-input" placeholder="you@example.com">
       </div>
-      
+
       <div class="form-group">
         <label for="password-input">Set a password (to delete your book later):</label>
         <input type="password" id="password-input" placeholder="Enter a password" minlength="4">
-        <div class="password-help">Remember this password - you'll need it to delete your book after it's approved. Minimum 4 characters.</div>
+        <div class="password-help">
+          Remember this password — you'll need it to delete your book after it's approved. Minimum 4 characters.
+        </div>
       </div>
-      
+
       <button id="upload-button" type="button">Upload Book</button>
       <div id="status"></div>
       <div id="storage-info"></div>
     </div>
+
     <h2>Available Books</h2>
     <input type="text" id="search-input" placeholder="Search by title..." oninput="filterBooks()">
     <div id="inventory-grid"></div>
   </div>
-  
-  <a href="#" class="admin-link" onclick="enableAdminMode(); return false;">Admin</a>
-  
-  <script>
-    // =================================================================
-    // API CONFIGURATION - All API keys defined here for proper scope
-    // =================================================================
-    
-    // ImgBB API Configuration
-    const IMGBB_API_KEY = 'd2874cf23320c36b80524a4e065e1353';
-    
-    // Supabase Configuration
-    const SUPABASE_URL = 'https://vpswhgppgyngxxxxvfkf.supabase.co';
-    const SUPABASE_ANON_KEY = 'sb_publishable_adjGINGJHz6FZZCEuarvLw_oFMpDKfX';
-    
-    // Initialize Supabase client
-    const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-    
-    // =================================================================
-    // MAIN APPLICATION CODE
-    // =================================================================
-    
-    // Admin mode variables
-    let adminMode = false;
-    const ADMIN_PASSWORD = 'admin123'; // CHANGE THIS TO A SECURE PASSWORD
 
+  <a href="#" class="admin-link" onclick="enableAdminMode(); return false;">Admin</a>
+
+  <script>
+    // =========================
+    // CONFIG LOADING
+    // =========================
+    const C = window.MYBOOKSHARE_CONFIG || {};
+
+    const CONFIG = {
+      SUPABASE_URL: C.SUPABASE_URL || 'YOUR_SUPABASE_URL',
+      SUPABASE_ANON_KEY: C.SUPABASE_ANON_KEY || 'YOUR_SUPABASE_ANON_KEY',
+
+      IMGBB_API_KEY: C.IMGBB_API_KEY || 'YOUR_IMGBB_API_KEY',
+
+      EMAILJS_PUBLIC_KEY: C.EMAILJS_PUBLIC_KEY || 'YOUR_EMAILJS_PUBLIC_KEY',
+      EMAILJS_SERVICE_ID: C.EMAILJS_SERVICE_ID || 'YOUR_EMAILJS_SERVICE_ID',
+      EMAILJS_ADMIN_REVIEW_TEMPLATE_ID: C.EMAILJS_ADMIN_REVIEW_TEMPLATE_ID || 'YOUR_ADMIN_REVIEW_TEMPLATE_ID',
+      EMAILJS_APPROVAL_TEMPLATE_ID: C.EMAILJS_APPROVAL_TEMPLATE_ID || 'YOUR_APPROVAL_TEMPLATE_ID',
+
+      // Store only a SHA-256 hash for the admin password (still not “secure”, but avoids plaintext)
+      ADMIN_PASSWORD_SHA256: C.ADMIN_PASSWORD_SHA256 || 'YOUR_ADMIN_PASSWORD_SHA256'
+    };
+
+    function isConfigured() {
+      return (
+        CONFIG.SUPABASE_URL !== 'YOUR_SUPABASE_URL' &&
+        CONFIG.SUPABASE_ANON_KEY !== 'YOUR_SUPABASE_ANON_KEY' &&
+        CONFIG.IMGBB_API_KEY !== 'YOUR_IMGBB_API_KEY' &&
+        CONFIG.EMAILJS_PUBLIC_KEY !== 'YOUR_EMAILJS_PUBLIC_KEY' &&
+        CONFIG.EMAILJS_SERVICE_ID !== 'YOUR_EMAILJS_SERVICE_ID'
+      );
+    }
+
+    // Initialize EmailJS (public key)
+    try {
+      if (CONFIG.EMAILJS_PUBLIC_KEY && CONFIG.EMAILJS_PUBLIC_KEY !== 'YOUR_EMAILJS_PUBLIC_KEY') {
+        emailjs.init(CONFIG.EMAILJS_PUBLIC_KEY);
+      }
+    } catch (e) {
+      console.warn('EmailJS init failed:', e);
+    }
+
+    // Initialize Supabase client
+    const supabaseClient = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
+
+    // =========================
+    // MAIN APP STATE
+    // =========================
+    let adminMode = false;
     let books = [];
 
-    // Check if Supabase is configured
-    window.addEventListener('load', async function() {
-      console.log('========== PAGE LOAD STARTED ==========');
-      console.log('Checking Supabase configuration...');
-      console.log('SUPABASE_URL:', SUPABASE_URL);
-      console.log('SUPABASE_ANON_KEY:', SUPABASE_ANON_KEY ? '(key present, length: ' + SUPABASE_ANON_KEY.length + ')' : '(missing)');
-      console.log('IMGBB_API_KEY:', IMGBB_API_KEY ? '(key present)' : '(missing)');
-      
-      if (SUPABASE_URL === 'YOUR_SUPABASE_URL' || SUPABASE_ANON_KEY === 'YOUR_SUPABASE_ANON_KEY') {
-        console.warn('Supabase not configured properly!');
-        document.getElementById('supabase-warning').style.display = 'block';
-      } else {
-        console.log('Supabase appears to be configured ✓');
+    window.addEventListener('load', async function () {
+      if (!isConfigured()) {
+        document.getElementById('config-warning').style.display = 'block';
       }
-      
-      console.log('Attempting to load books from database...');
+
       try {
         await loadBooks();
-        console.log('Books loaded successfully!');
       } catch (e) {
-        console.error('Failed to load books:', e);
+        console.error('Initial loadBooks failed:', e);
       }
-      
-      console.log('Rendering books to page...');
+
       renderBooks();
-      
+
       const urlParams = new URLSearchParams(window.location.search);
       const reviewId = urlParams.get('review');
-      
       if (reviewId) {
-        console.log('Review ID detected in URL:', reviewId);
         alert('Please click "Admin" in the bottom-right corner to review pending uploads.');
       }
-      
-      console.log('========== PAGE LOAD COMPLETE ==========');
-      console.log('Page is ready! Upload button should work now.');
     });
 
-    // Upload image to ImgBB
-    async function uploadToImgBB(file) {
-      console.log('uploadToImgBB called with file:', file.name, file.size, 'bytes');
-      const formData = new FormData();
-      formData.append('image', file);
-
-      try {
-        console.log('Sending request to ImgBB API...');
-        const response = await fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_API_KEY}`, {
-          method: 'POST',
-          body: formData
-        });
-
-        console.log('ImgBB response status:', response.status);
-        
-        if (!response.ok) {
-          const errorData = await response.json();
-          console.error('ImgBB error response:', errorData);
-          throw new Error(`ImgBB upload failed: ${errorData.error?.message || response.statusText}`);
-        }
-
-        const data = await response.json();
-        console.log('ImgBB success response:', data);
-        return data.data.url;
-      } catch (error) {
-        console.error('ImgBB upload error:', error);
-        throw error;
-      }
-    }
-
-    async function hashPassword(password) {
-      const encoder = new TextEncoder();
-      const data = encoder.encode(password);
-      const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-      const hashArray = Array.from(new Uint8Array(hashBuffer));
-      const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-      return hashHex;
-    }
-
+    // =========================
+    // HELPERS
+    // =========================
     function validateEmail(email) {
       const re = /^\S+@\S+\.\S+$/;
       return re.test(email);
     }
 
-    // Send admin review notification when book is uploaded
-    function sendAdminReviewEmail(email, title, bookId) {
-      const serviceID = 'service_hrwfurl';
-      const templateID = 'template_9iyhtuo';
-      const adminEmail = 'zdjimas@gmail.com';
+    async function sha256Hex(str) {
+      const encoder = new TextEncoder();
+      const data = encoder.encode(str);
+      const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    }
+
+    async function hashPassword(password) {
+      return sha256Hex(password);
+    }
+
+    // =========================
+    // EMAILS
+    // =========================
+    function sendAdminReviewEmail(userEmail, title, bookId) {
+      const adminEmail = (C.ADMIN_EMAIL || 'YOUR_ADMIN_EMAIL'); // optional
       const reviewUrl = window.location.origin + window.location.pathname + '?review=' + bookId;
+
       const params = {
         to_email: adminEmail,
         admin_email: adminEmail,
-        user_email: email,
+        user_email: userEmail,
         book_title: title,
         upload_date: new Date().toLocaleString(),
         review_url: reviewUrl,
         book_id: bookId
       };
-      return emailjs.send(serviceID, templateID, params)
-        .then(response => {
-          console.log('Admin review email sent successfully', response.status);
-          return true;
-        })
-        .catch(error => {
-          console.error('Admin review email error:', error);
-          alert('Warning: Failed to send admin notification email. Error: ' + error.text);
+
+      return emailjs.send(CONFIG.EMAILJS_SERVICE_ID, CONFIG.EMAILJS_ADMIN_REVIEW_TEMPLATE_ID, params)
+        .then(r => true)
+        .catch(err => {
+          console.error('Admin email failed:', err);
           return false;
         });
     }
 
-    // Send approval notification to user when admin approves
     function sendApprovalNotificationEmail(email, title) {
-      const serviceID = 'service_hrwfurl';
-      const templateID = 'template_la29vmh';
       const params = {
         to_email: email,
         user_email: email,
         book_title: title,
         site_url: window.location.origin + window.location.pathname
       };
-      return emailjs.send(serviceID, templateID, params)
-        .then(response => {
-          console.log('Approval notification sent successfully', response.status);
-          return true;
-        })
-        .catch(error => {
-          console.error('Approval notification error:', error);
-          alert('Warning: Failed to send user approval email. Error: ' + error.text);
+
+      return emailjs.send(CONFIG.EMAILJS_SERVICE_ID, CONFIG.EMAILJS_APPROVAL_TEMPLATE_ID, params)
+        .then(r => true)
+        .catch(err => {
+          console.error('Approval email failed:', err);
           return false;
         });
     }
 
-    // Load books from Supabase
+    // =========================
+    // IMGBB UPLOAD
+    // =========================
+    async function uploadToImgBB(file) {
+      const formData = new FormData();
+      formData.append('image', file);
+
+      const response = await fetch(`https://api.imgbb.com/1/upload?key=${CONFIG.IMGBB_API_KEY}`, {
+        method: 'POST',
+        body: formData
+      });
+
+      if (!response.ok) {
+        let errorData = null;
+        try { errorData = await response.json(); } catch {}
+        throw new Error(`ImgBB upload failed: ${errorData?.error?.message || response.statusText}`);
+      }
+
+      const data = await response.json();
+      return data.data.url;
+    }
+
+    // =========================
+    // SUPABASE CRUD
+    // =========================
     async function loadBooks() {
-      try {
-        console.log('loadBooks: Starting to load books from Supabase...');
-        
-        // Add timeout to prevent infinite hanging
-        const timeout = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('Supabase query timed out after 10 seconds')), 10000)
-        );
-        
-        const query = supabaseClient
-          .from('books')
-          .select('*')
-          .order('upload_date', { ascending: false });
-        
-        const { data, error } = await Promise.race([query, timeout]);
+      // timeout guard
+      const timeout = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Supabase query timed out after 10 seconds')), 10000)
+      );
 
-        if (error) {
-          console.error('loadBooks: Supabase error:', error);
-          throw error;
-        }
+      const query = supabaseClient
+        .from('books')
+        .select('*')
+        .order('upload_date', { ascending: false });
 
-        console.log('loadBooks: Successfully loaded', data?.length || 0, 'books');
-        books = data || [];
-        updateStorageInfo();
-      } catch (e) {
-        console.error('loadBooks: Error loading books from Supabase:', e);
-        console.error('loadBooks: Error details:', e.message);
-        
-        // Don't alert on page load - just log it
-        // The page should still be usable even if initial load fails
-        books = [];
-        updateStorageInfo();
-        
-        // Show warning in status instead of blocking alert
-        const status = document.getElementById('status');
-        if (status) {
-          status.textContent = 'Warning: Could not load existing books from database. ' + e.message;
-          status.style.color = '#ff9800';
-        }
-      }
+      const { data, error } = await Promise.race([query, timeout]);
+
+      if (error) throw error;
+
+      books = data || [];
+      updateStorageInfo();
     }
 
-    // Save book to Supabase
     async function saveBook(book) {
-      try {
-        console.log('saveBook called with:', book);
-        const { data, error } = await supabaseClient
-          .from('books')
-          .insert([book])
-          .select();
+      const { data, error } = await supabaseClient
+        .from('books')
+        .insert([book])
+        .select();
 
-        if (error) {
-          console.error('Supabase error:', error);
-          throw error;
-        }
-
-        console.log('Supabase save successful:', data);
-        return data[0];
-      } catch (e) {
-        console.error('Error saving book to Supabase:', e);
-        alert('Failed to save book: ' + e.message + '\n\nCheck browser console for details.');
-        return null;
-      }
+      if (error) throw error;
+      return data[0];
     }
 
-    // Update book in Supabase
     async function updateBook(id, updates) {
-      try {
-        const { data, error } = await supabaseClient
-          .from('books')
-          .update(updates)
-          .eq('id', id)
-          .select();
+      const { data, error } = await supabaseClient
+        .from('books')
+        .update(updates)
+        .eq('id', id)
+        .select();
 
-        if (error) throw error;
-
-        return data[0];
-      } catch (e) {
-        console.error('Error updating book in Supabase:', e);
-        alert('Failed to update book: ' + e.message);
-        return null;
-      }
+      if (error) throw error;
+      return data[0];
     }
 
-    // Delete book from Supabase
     async function deleteBookFromDB(id) {
-      try {
-        const { error } = await supabaseClient
-          .from('books')
-          .delete()
-          .eq('id', id);
+      const { error } = await supabaseClient
+        .from('books')
+        .delete()
+        .eq('id', id);
 
-        if (error) throw error;
-
-        return true;
-      } catch (e) {
-        console.error('Error deleting book from Supabase:', e);
-        alert('Failed to delete book: ' + e.message);
-        return false;
-      }
+      if (error) throw error;
+      return true;
     }
 
     function updateStorageInfo() {
       const info = document.getElementById('storage-info');
       const approvedCount = books.filter(b => b.status === 'approved').length;
       const pendingCount = books.filter(b => b.status === 'pending').length;
-      info.textContent = `Books: ${approvedCount} approved, ${pendingCount} pending | Database: Supabase (shared across all devices!)`;
-      
+
+      info.textContent = `Books: ${approvedCount} approved, ${pendingCount} pending | Database: Supabase`;
+
       if (adminMode) {
         document.getElementById('pending-count').textContent = pendingCount;
       }
     }
 
+    // =========================
+    // ADMIN ACTIONS
+    // =========================
     async function approveBook(id) {
       const book = books.find(b => b.id === id);
       if (!book) return;
-      
+
       if (confirm(`Approve "${book.title}" by ${book.email}?`)) {
         const updated = await updateBook(id, {
           status: 'approved',
           approved_date: new Date().toISOString()
         });
-        
+
         if (updated) {
           await loadBooks();
           renderBooks();
           renderPendingBooks();
-          
-          sendApprovalNotificationEmail(book.email, book.title);
-          
+          await sendApprovalNotificationEmail(book.email, book.title);
           alert('Book approved! User will be notified by email.');
         }
       }
@@ -603,7 +410,7 @@
     async function rejectBook(id) {
       const book = books.find(b => b.id === id);
       if (!book) return;
-      
+
       if (confirm(`Reject and delete "${book.title}" by ${book.email}?`)) {
         const deleted = await deleteBookFromDB(id);
         if (deleted) {
@@ -618,7 +425,7 @@
     async function deleteBook(id) {
       const book = books.find(b => b.id === id);
       if (!book) return;
-      
+
       if (adminMode) {
         if (confirm(`[ADMIN MODE] Delete "${book.title}" uploaded by ${book.email}?`)) {
           const deleted = await deleteBookFromDB(id);
@@ -631,12 +438,12 @@
         }
         return;
       }
-      
+
       const password = prompt(`Enter the password you set when you uploaded "${book.title}":`);
       if (!password) return;
-      
+
       const hashedInput = await hashPassword(password);
-      
+
       if (hashedInput === book.password_hash) {
         if (confirm('Are you sure you want to delete this book?')) {
           const deleted = await deleteBookFromDB(id);
@@ -651,73 +458,85 @@
       }
     }
 
-    function enableAdminMode() {
+    async function enableAdminMode() {
       const password = prompt('Enter admin password:');
-      if (password === ADMIN_PASSWORD) {
+      if (!password) return;
+
+      const enteredHash = await sha256Hex(password);
+
+      if (CONFIG.ADMIN_PASSWORD_SHA256 !== 'YOUR_ADMIN_PASSWORD_SHA256' &&
+          enteredHash === CONFIG.ADMIN_PASSWORD_SHA256) {
+
         adminMode = true;
         document.getElementById('admin-panel').style.display = 'block';
         alert('Admin mode enabled. You can now review pending uploads and manage all books.');
         renderBooks();
         renderPendingBooks();
+        updateStorageInfo();
+
       } else {
-        alert('Incorrect admin password.');
+        alert('Incorrect admin password (or admin hash not configured).');
       }
     }
 
+    // =========================
+    // RENDERING
+    // =========================
     function renderPendingBooks() {
       const grid = document.getElementById('pending-grid');
       grid.innerHTML = '';
-      
+
       const pendingBooks = books.filter(b => b.status === 'pending');
-      
+
       if (pendingBooks.length === 0) {
-        grid.innerHTML = '<p style="color: #c5d6ff;">No pending uploads to review.</p>';
+        grid.innerHTML = '<p style="color:#c5d6ff;">No pending uploads to review.</p>';
         return;
       }
-      
+
       pendingBooks.forEach((book) => {
         const item = document.createElement('div');
         item.className = 'book-item pending';
-        
+
         const img = document.createElement('img');
         img.src = book.image_url;
         img.alt = book.title;
-        
+
         const titleEl = document.createElement('div');
         titleEl.className = 'book-title';
         titleEl.textContent = book.title;
-        
+
         const emailEl = document.createElement('div');
         emailEl.className = 'book-email';
         emailEl.textContent = 'Uploader: ' + book.email;
-        
+
         const dateEl = document.createElement('div');
         dateEl.style.fontSize = '0.8em';
         dateEl.style.color = '#666';
         dateEl.style.marginTop = '4px';
         dateEl.textContent = 'Uploaded: ' + new Date(book.upload_date).toLocaleDateString();
-        
+
         const buttonContainer = document.createElement('div');
         buttonContainer.style.marginTop = '8px';
-        
+
         const approveBtn = document.createElement('button');
         approveBtn.className = 'approve-btn';
         approveBtn.textContent = '✓ Approve';
         approveBtn.onclick = () => approveBook(book.id);
-        
+
         const rejectBtn = document.createElement('button');
         rejectBtn.className = 'reject-btn';
         rejectBtn.textContent = '✗ Reject';
         rejectBtn.onclick = () => rejectBook(book.id);
-        
+
         buttonContainer.appendChild(approveBtn);
         buttonContainer.appendChild(rejectBtn);
-        
+
         item.appendChild(img);
         item.appendChild(titleEl);
         item.appendChild(emailEl);
         item.appendChild(dateEl);
         item.appendChild(buttonContainer);
+
         grid.appendChild(item);
       });
     }
@@ -725,189 +544,172 @@
     function renderBooks() {
       const grid = document.getElementById('inventory-grid');
       grid.innerHTML = '';
-      
+
       const visibleBooks = adminMode ? books : books.filter(b => b.status === 'approved');
-      
+
       if (visibleBooks.length === 0) {
-        grid.innerHTML = '<p style="color: #c5d6ff; grid-column: 1 / -1;">No books available yet. Check back soon!</p>';
+        grid.innerHTML = '<p style="color:#c5d6ff; grid-column:1 / -1;">No books available yet. Check back soon!</p>';
         return;
       }
-      
+
       visibleBooks.forEach((book) => {
         const item = document.createElement('div');
         item.className = 'book-item';
-        if (book.status === 'pending') {
-          item.classList.add('pending');
-        }
-        
+        if (book.status === 'pending') item.classList.add('pending');
+
         const deleteBtn = document.createElement('button');
         deleteBtn.className = 'delete-btn';
         deleteBtn.textContent = adminMode ? 'Admin Delete' : 'Delete';
         deleteBtn.onclick = () => deleteBook(book.id);
-        
+
         const img = document.createElement('img');
         img.src = book.image_url;
         img.alt = book.title;
-        img.onerror = function() {
+        img.onerror = function () {
           this.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="180" height="220"%3E%3Crect fill="%23ddd" width="180" height="220"/%3E%3Ctext x="50%25" y="50%25" text-anchor="middle" dy=".3em" fill="%23999"%3EImage not found%3C/text%3E%3C/svg%3E';
         };
-        
+
         const titleEl = document.createElement('div');
         titleEl.className = 'book-title';
         titleEl.innerHTML = book.title;
         if (book.status === 'pending' && adminMode) {
           titleEl.innerHTML += ' <span class="pending-badge">PENDING</span>';
         }
-        
+
         const emailEl = document.createElement('div');
         emailEl.className = 'book-email';
         emailEl.textContent = 'Contact: ' + book.email;
-        
+
         item.appendChild(deleteBtn);
         item.appendChild(img);
         item.appendChild(titleEl);
         item.appendChild(emailEl);
+
         grid.appendChild(item);
       });
+
+      updateStorageInfo();
     }
 
     function filterBooks() {
       const query = document.getElementById('search-input').value.toLowerCase();
       const grid = document.getElementById('inventory-grid');
       grid.innerHTML = '';
-      
+
       const visibleBooks = adminMode ? books : books.filter(b => b.status === 'approved');
-      const filtered = visibleBooks.filter(book => book.title.toLowerCase().includes(query));
-      
+      const filtered = visibleBooks.filter(book => (book.title || '').toLowerCase().includes(query));
+
       if (filtered.length === 0) {
-        grid.innerHTML = '<p style="color: #c5d6ff; grid-column: 1 / -1;">No books found matching your search.</p>';
+        grid.innerHTML = '<p style="color:#c5d6ff; grid-column:1 / -1;">No books found matching your search.</p>';
         return;
       }
-      
+
       filtered.forEach((book) => {
         const item = document.createElement('div');
         item.className = 'book-item';
-        if (book.status === 'pending') {
-          item.classList.add('pending');
-        }
-        
+        if (book.status === 'pending') item.classList.add('pending');
+
         const deleteBtn = document.createElement('button');
         deleteBtn.className = 'delete-btn';
         deleteBtn.textContent = adminMode ? 'Admin Delete' : 'Delete';
         deleteBtn.onclick = () => deleteBook(book.id);
-        
+
         const img = document.createElement('img');
         img.src = book.image_url;
         img.alt = book.title;
-        img.onerror = function() {
+        img.onerror = function () {
           this.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="180" height="220"%3E%3Crect fill="%23ddd" width="180" height="220"/%3E%3Ctext x="50%25" y="50%25" text-anchor="middle" dy=".3em" fill="%23999"%3EImage not found%3C/text%3E%3C/svg%3E';
         };
-        
+
         const titleEl = document.createElement('div');
         titleEl.className = 'book-title';
         titleEl.innerHTML = book.title;
         if (book.status === 'pending' && adminMode) {
           titleEl.innerHTML += ' <span class="pending-badge">PENDING</span>';
         }
-        
+
         const emailEl = document.createElement('div');
         emailEl.className = 'book-email';
         emailEl.textContent = 'Contact: ' + book.email;
-        
+
         item.appendChild(deleteBtn);
         item.appendChild(img);
         item.appendChild(titleEl);
         item.appendChild(emailEl);
+
         grid.appendChild(item);
       });
     }
 
+    // =========================
+    // UPLOAD FLOW
+    // =========================
     async function processUpload() {
-      console.log('========== UPLOAD STARTED ==========');
       const fileInput = document.getElementById('file-input');
       const emailInput = document.getElementById('email-input');
       const passwordInput = document.getElementById('password-input');
       const uploadButton = document.getElementById('upload-button');
       const status = document.getElementById('status');
-      
-      console.log('Step 1: Checking file input...');
+
+      if (!isConfigured()) {
+        alert('Site config is missing. Set window.MYBOOKSHARE_CONFIG and reload.');
+        return;
+      }
+
       if (!fileInput.files || fileInput.files.length === 0) {
         alert('Please select an image file (.jpg or .png).');
         return;
       }
-      
+
       const file = fileInput.files[0];
-      console.log('File selected:', file.name, file.type, file.size, 'bytes');
-      
-      console.log('Step 2: Validating file type...');
+
       if (!['image/jpeg', 'image/png'].includes(file.type)) {
         alert('Only JPG and PNG images are allowed.');
         return;
       }
-      
-      console.log('Step 3: Checking file size...');
+
       const maxSize = 32 * 1024 * 1024;
       if (file.size > maxSize) {
         alert('Image file is too large. Please use an image smaller than 32MB.');
         return;
       }
-      
-      console.log('Step 4: Validating email...');
+
       const email = emailInput.value.trim();
-      console.log('Email:', email);
       if (!validateEmail(email)) {
         alert('Please enter a valid email address.');
         return;
       }
-      
-      console.log('Step 5: Checking password...');
+
       const password = passwordInput.value.trim();
       if (!password || password.length < 4) {
         alert('Please enter a password (minimum 4 characters).');
         return;
       }
-      console.log('Password length:', password.length, '✓');
-      
-      console.log('Step 6: Disabling upload button...');
+
       uploadButton.disabled = true;
-      
+
       try {
-        console.log('Step 7: About to show title prompt...');
-        console.log('SHOWING PROMPT NOW!');
-        
         let title = '';
         while (!title || title.trim() === '') {
           title = prompt('Enter the book title (required):');
-          console.log('User entered title:', title);
-          
           if (title === null) {
-            console.log('User cancelled prompt');
             alert('Book title is required. Upload cancelled.');
             uploadButton.disabled = false;
             status.textContent = '';
             return;
           }
           title = title.trim();
-          if (title === '') {
-            console.log('Title was empty, asking again...');
-            alert('Book title cannot be empty. Please enter a title.');
-          }
+          if (title === '') alert('Book title cannot be empty. Please enter a title.');
         }
-        
-        console.log('Step 8: Title received:', title);
-        console.log('Step 9: Starting ImgBB upload...');
+
         status.innerHTML = 'Uploading image to ImgBB... <span class="loading-spinner"></span>';
-        
         const imageUrl = await uploadToImgBB(file);
-        console.log('Step 10: ImgBB upload complete:', imageUrl);
-        
-        console.log('Step 11: Hashing password...');
+
+        status.innerHTML = 'Hashing password... <span class="loading-spinner"></span>';
         const passwordHash = await hashPassword(password);
-        console.log('Password hashed ✓');
-        
+
         const bookId = Date.now().toString();
-        console.log('Step 12: Book ID generated:', bookId);
-        
+
         const book = {
           id: bookId,
           title: title,
@@ -917,57 +719,33 @@
           upload_date: new Date().toISOString(),
           status: 'pending'
         };
-        
-        console.log('Step 13: Book object created:', book);
-        console.log('Step 14: Saving to Supabase...');
+
         status.innerHTML = 'Saving to database... <span class="loading-spinner"></span>';
-        
         const savedBook = await saveBook(book);
-        console.log('Step 15: Save result:', savedBook);
-        
+
         if (savedBook) {
-          console.log('Step 16: Reloading books from database...');
           await loadBooks();
-          console.log('Step 17: Rendering books...');
           renderBooks();
-          if (adminMode) {
-            renderPendingBooks();
-          }
-          
-          console.log('Step 18: Sending admin email...');
+          if (adminMode) renderPendingBooks();
+
           status.textContent = 'Sending admin notification...';
-          try {
-            const emailSent = await sendAdminReviewEmail(email, title, bookId);
-            if (emailSent) {
-              console.log('Step 19: Email sent successfully!');
-              status.textContent = 'Book submitted for review! The administrator has been notified.';
-            } else {
-              console.log('Step 19: Email failed');
-              status.textContent = 'Book saved, but email notification failed. Please check browser console.';
-            }
-          } catch (emailError) {
-            console.error('Email error:', emailError);
-            status.textContent = 'Book saved, but email notification failed. Error: ' + emailError.message;
-          }
-          
-          console.log('Step 20: Clearing form...');
+          const emailSent = await sendAdminReviewEmail(email, title, bookId);
+
+          status.textContent = emailSent
+            ? 'Book submitted for review! The administrator has been notified.'
+            : 'Book saved, but email notification failed. Check console.';
+
           fileInput.value = '';
           emailInput.value = '';
           passwordInput.value = '';
-          console.log('========== UPLOAD COMPLETE ==========');
         } else {
-          console.error('Step 15: Save failed, savedBook is null');
           status.textContent = 'Failed to save book to database.';
         }
       } catch (err) {
-        console.error('========== UPLOAD ERROR ==========');
-        console.error('Error details:', err);
-        console.error('Error message:', err.message);
-        console.error('Error stack:', err.stack);
+        console.error(err);
         status.textContent = 'Error: ' + err.message;
         alert('Upload failed: ' + err.message + '\n\nCheck browser console (F12) for details.');
       } finally {
-        console.log('Step FINAL: Re-enabling upload button...');
         uploadButton.disabled = false;
       }
     }

@@ -217,6 +217,7 @@
     let adminMode = false;
     let books = [];
     let pendingBooks = [];
+    let localPendingCount = 0; // pending submissions in this browser session
     let adminPasswordPlain = null;
 
     window.addEventListener('load', async function () {
@@ -391,7 +392,7 @@
         function updateStorageInfo() {
       const info = document.getElementById('storage-info');
       const approvedCount = books.length;
-      const pendingCount = pendingBooks.length;
+      const pendingCount = adminMode ? pendingBooks.length : localPendingCount;
 
       info.textContent = `Books: ${approvedCount} approved, ${pendingCount} pending | Database: Supabase`;
 
@@ -408,6 +409,7 @@
       await loadBooks();
       if (adminMode) {
         pendingBooks = await adminListPendingFromDB();
+        localPendingCount = pendingBooks.length;
       } else {
         pendingBooks = [];
       }
@@ -756,11 +758,15 @@
         status.innerHTML = 'Saving to database... <span class="loading-spinner"></span>';
         const savedBook = await saveBook(book);
 
+        // We cannot SELECT pending rows as anon (by design). Track session pending count locally.
+        localPendingCount += 1;
+
         if (savedBook) {
           await loadBooks();
           renderBooks();
           if (adminMode) {
             pendingBooks = await adminListPendingFromDB();
+        localPendingCount = pendingBooks.length;
             renderPendingBooks();
           }
 

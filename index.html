@@ -343,16 +343,17 @@
       updateStorageInfo();
     }
 
-    async function saveBook(book) {
-      const { data, error } = await supabaseClient
-        .from('books')
-        .insert([book])
-        // Return only non-sensitive columns
-        .select('id,title,email,image_url,upload_date,status');
+    
 
-      if (error) throw error;
-      return data[0];
-    }
+
+    async function saveBook(book) {
+  const { error } = await supabaseClient
+    .from('books')
+    .insert([book]);   // <-- no .select()
+
+  if (error) throw error;
+  return true;
+}
 
     async function updateBook(id, updates) {
       const { data, error } = await supabaseClient

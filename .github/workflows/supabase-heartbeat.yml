@@ -1,76 +1,62 @@
 name: Supabase Heartbeat
 
 on:
-schedule:
-# Twice per week is usually sufficient for a 7-day inactivity window
-- cron: "0 6 * * 1,5"   # Mon & Fri 06:00 UTC
-workflow_dispatch: {}
+  schedule:
+    # Mon & Fri 06:00 UTC
+    - cron: "0 6 * * 1,5"
+  workflow_dispatch:
 
 jobs:
-ping:
-runs-on: ubuntu-latest
-timeout-minutes: 2
-steps:
-- name: Validate Supabase secrets (fail fast)
-shell: bash
-env:
-SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-run: |
-set -euo pipefail
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
 
-```
-      # Guardrails: these errors are the #1 cause of curl exit code 3
-      if [ -z "${SUPABASE_URL:-}" ]; then
-        echo "ERROR: SUPABASE_URL secret is missing/empty."
-        echo "Fix: Repo Settings → Secrets and variables → Actions → New repository secret → SUPABASE_URL"
-        exit 1
-      fi
+    steps:
+      - name: Validate Supabase secrets (fail fast)
+        shell: bash
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          set -euo pipefail
 
-      if [ -z "${SUPABASE_ANON_KEY:-}" ]; then
-        echo "ERROR: SUPABASE_ANON_KEY secret is missing/empty."
-        echo "Fix: Repo Settings → Secrets and variables → Actions → New repository secret → SUPABASE_ANON_KEY"
-        exit 1
-      fi
+          if [ -z "${SUPABASE_URL:-}" ]; then
+            echo "ERROR: SUPABASE_URL secret is missing or empty."
+            exit 1
+          fi
 
-      # Minimal URL sanity check
-      case "$SUPABASE_URL" in
-        https://*) ;;
-        *)
-          echo "ERROR: SUPABASE_URL must start with https://"
-          echo "Current SUPABASE_URL appears malformed."
-          exit 1
-          ;;
-      esac
+          if [ -z "${SUPABASE_ANON_KEY:-}" ]; then
+            echo "ERROR: SUPABASE_ANON_KEY secret is missing or empty."
+            exit 1
+          fi
 
-      # Helpful non-sensitive diagnostics
-      echo "Supabase URL length: ${#SUPABASE_URL}"
-      echo "Supabase anon key present (length: ${#SUPABASE_ANON_KEY})"
+          case "$SUPABASE_URL" in
+            https://*) ;; 
+            *)
+              echo "ERROR: SUPABASE_URL must start with https://"
+              exit 1
+              ;;
+          esac
 
-  - name: Ping Supabase REST API (books)
-    shell: bash
-    env:
-      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-      SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-    run: |
-      set -euo pipefail
+          echo "Supabase URL length: ${#SUPABASE_URL}"
+          echo "Supabase anon key present (length: ${#SUPABASE_ANON_KEY})"
 
-      endpoint="${SUPABASE_URL%/}/rest/v1/books?select=id&limit=1"
-      echo "Pinging: ${endpoint}"
+      - name: Ping Supabase REST API (books)
+        shell: bash
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          set -euo pipefail
 
-      code=$(curl -sS -o /dev/null -w "%{http_code}" \
-        "$endpoint" \
-        -H "apikey: ${SUPABASE_ANON_KEY}" \
-        -H "Authorization: Bearer ${SUPABASE_ANON_KEY}")
+          endpoint="${SUPABASE_URL%/}/rest/v1/books?select=id&limit=1"
+          echo "Pinging: ${endpoint}"
 
-      echo "HTTP status: $code"
+          code=$(curl -sS -o /dev/null -w "%{http_code}"             "$endpoint"             -H "apikey: ${SUPABASE_ANON_KEY}"             -H "Authorization: Bearer ${SUPABASE_ANON_KEY}")
 
-      # 200 OK or 206 Partial Content are both acceptable for PostgREST
-      if [ "$code" -ne 200 ] && [ "$code" -ne 206 ]; then
-        echo "ERROR: Unexpected HTTP status from Supabase: $code"
-        echo "Common causes:"
-        echo " - 401: anon key invalid"
-        echo " - 404: project URL wrong or table not found"
-        echo " - 406: RLS / accept headers / schema mismatch"
-        exit 1
-      fi
+          echo "HTTP status: $code"
+
+          if [ "$code" -ne 200 ] && [ "$code" -ne 206 ]; then
+            echo "ERROR: Unexpected HTTP status from Supabase: $code"
+            exit 1
+          fi

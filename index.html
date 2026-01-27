@@ -331,7 +331,8 @@
 
       const query = supabaseClient
         .from('books')
-        .select('*')
+        // IMPORTANT: never select '*' because it would expose password_hash and can trigger RLS/401
+        .select('id,title,email,image_url,upload_date,status,approved_date')
         .order('upload_date', { ascending: false });
 
       const { data, error } = await Promise.race([query, timeout]);
@@ -346,7 +347,8 @@
       const { data, error } = await supabaseClient
         .from('books')
         .insert([book])
-        .select();
+        // Return only non-sensitive columns
+        .select('id,title,email,image_url,upload_date,status');
 
       if (error) throw error;
       return data[0];
@@ -357,7 +359,8 @@
         .from('books')
         .update(updates)
         .eq('id', id)
-        .select();
+        // Return only non-sensitive columns
+        .select('id,title,email,image_url,upload_date,status,approved_date');
 
       if (error) throw error;
       return data[0];
@@ -451,24 +454,20 @@
       const password = prompt(`Enter the password you set when you uploaded "${book.title}":`);
       if (!password) return;
 
-      const hashedInput = await hashPassword(password);
-
-      if (hashedInput === book.password_hash) {
-        if (confirm('Are you sure you want to delete this book?')) {
-          try {
-            const deleted = await deleteBookOwnerFromDB(id, password);
-            if (deleted) {
-              await loadBooks();
-              renderBooks();
-              alert('Book deleted successfully!');
-            }
-          } catch (err) {
-            console.error(err);
-            alert('Delete failed: ' + (err?.message || 'Unknown error'));
+      if (confirm('Are you sure you want to delete this book?')) {
+        try {
+          // Server-side function validates the password.
+          // We intentionally do NOT fetch password_hash to the browser.
+          const deleted = await deleteBookOwnerFromDB(id, password);
+          if (deleted) {
+            await loadBooks();
+            renderBooks();
+            alert('Book deleted successfully!');
           }
+        } catch (err) {
+          console.error(err);
+          alert('Delete failed: ' + (err?.message || 'Incorrect password or unknown error'));
         }
-      } else {
-        alert('Incorrect password. Only the owner can delete this book.');
       }
     }
 

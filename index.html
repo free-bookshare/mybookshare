@@ -216,6 +216,8 @@
     // =========================
     let adminMode = false;
     let books = [];
+    let pendingBooks = [];
+    let adminPasswordPlain = null;
 
     window.addEventListener('load', async function () {
       if (!isConfigured()) {
@@ -331,8 +333,9 @@
 
       const query = supabaseClient
         .from('books')
-        // IMPORTANT: never select '*' because it would expose password_hash and can trigger RLS/401
+        // Public inventory should only ever load approved books
         .select('id,title,email,image_url,upload_date,status,approved_date')
+        .eq('status', 'approved')
         .order('upload_date', { ascending: false });
 
       const { data, error } = await Promise.race([query, timeout]);
@@ -355,19 +358,7 @@
   return true;
 }
 
-    async function updateBook(id, updates) {
-      const { data, error } = await supabaseClient
-        .from('books')
-        .update(updates)
-        .eq('id', id)
-        // Return only non-sensitive columns
-        .select('id,title,email,image_url,upload_date,status,approved_date');
-
-      if (error) throw error;
-      return data[0];
-    }
-
-    async function deleteBookOwnerFromDB(id, passwordPlaintext) {
+        async function deleteBookOwnerFromDB(id, passwordPlaintext) {
       const { error } = await supabaseClient
         .rpc('delete_book_with_password', { p_id: id, p_password: passwordPlaintext });
 
@@ -375,20 +366,32 @@
       return true;
     }
 
-    async function deleteBookAdminFromDB(id) {
-      const { error } = await supabaseClient
-        .from('books')
-        .delete()
-        .eq('id', id);
 
+    // Admin-only RPC helpers (password-gated in the database)
+    async function adminListPendingFromDB() {
+      if (!adminMode || !adminPasswordPlain) return [];
+      const { data, error } = await supabaseClient.rpc('admin_list_pending_books', {
+        p_admin_password: adminPasswordPlain
+      });
+      if (error) throw error;
+      return data || [];
+    }
+
+    async function adminSetBookStatus(id, newStatus) {
+      if (!adminMode || !adminPasswordPlain) throw new Error('Admin mode not enabled');
+      const { error } = await supabaseClient.rpc('admin_set_book_status', {
+        p_admin_password: adminPasswordPlain,
+        p_id: id,
+        p_new_status: newStatus
+      });
       if (error) throw error;
       return true;
     }
 
-    function updateStorageInfo() {
+        function updateStorageInfo() {
       const info = document.getElementById('storage-info');
-      const approvedCount = books.filter(b => b.status === 'approved').length;
-      const pendingCount = books.filter(b => b.status === 'pending').length;
+      const approvedCount = books.length;
+      const pendingCount = pendingBooks.length;
 
       info.textContent = `Books: ${approvedCount} approved, ${pendingCount} pending | Database: Supabase`;
 
@@ -400,68 +403,72 @@
     // =========================
     // ADMIN ACTIONS
     // =========================
+    async function refreshAdminData() {
+      // Reload approved inventory + pending queue (admin only)
+      await loadBooks();
+      if (adminMode) {
+        pendingBooks = await adminListPendingFromDB();
+      } else {
+        pendingBooks = [];
+      }
+      updateStorageInfo();
+    }
+
     async function approveBook(id) {
-      const book = books.find(b => b.id === id);
+      const book = pendingBooks.find(b => b.id === id);
       if (!book) return;
 
       if (confirm(`Approve "${book.title}" by ${book.email}?`)) {
-        const updated = await updateBook(id, {
-          status: 'approved',
-          approved_date: new Date().toISOString()
-        });
-
-        if (updated) {
-          await loadBooks();
+        try {
+          await adminSetBookStatus(id, 'approved');
+          await refreshAdminData();
           renderBooks();
           renderPendingBooks();
           await sendApprovalNotificationEmail(book.email, book.title);
           alert('Book approved! User will be notified by email.');
+        } catch (err) {
+          console.error(err);
+          alert('Approve failed: ' + (err?.message || 'Unknown error'));
         }
       }
     }
 
     async function rejectBook(id) {
-      const book = books.find(b => b.id === id);
+      const book = pendingBooks.find(b => b.id === id);
       if (!book) return;
 
-      if (confirm(`Reject and delete "${book.title}" by ${book.email}?`)) {
-        const deleted = await deleteBookAdminFromDB(id);
-        if (deleted) {
-          await loadBooks();
+      if (confirm(`Reject "${book.title}" by ${book.email}?`)) {
+        try {
+          // We mark as rejected (hidden from public inventory). This is safer than client-side deletes.
+          await adminSetBookStatus(id, 'rejected');
+          await refreshAdminData();
           renderBooks();
           renderPendingBooks();
-          alert('Book rejected and deleted.');
+          alert('Book rejected.');
+        } catch (err) {
+          console.error(err);
+          alert('Reject failed: ' + (err?.message || 'Unknown error'));
         }
       }
     }
 
     async function deleteBook(id) {
-      const book = books.find(b => b.id === id);
-      if (!book) return;
-
+      // In this security model, admin "delete" is implemented as REJECT (status='rejected')
       if (adminMode) {
-        if (confirm(`[ADMIN MODE] Delete "${book.title}" uploaded by ${book.email}?`)) {
-          const deleted = await deleteBookAdminFromDB(id);
-          if (deleted) {
-            await loadBooks();
-            renderBooks();
-            renderPendingBooks();
-            alert('Book deleted by administrator.');
-          }
-        }
-        return;
+        return rejectBook(id);
       }
+
+      const book = books.find(b => b.id === id) || pendingBooks.find(b => b.id === id);
+      if (!book) return;
 
       const password = prompt(`Enter the password you set when you uploaded "${book.title}":`);
       if (!password) return;
 
       if (confirm('Are you sure you want to delete this book?')) {
         try {
-          // Server-side function validates the password.
-          // We intentionally do NOT fetch password_hash to the browser.
           const deleted = await deleteBookOwnerFromDB(id, password);
           if (deleted) {
-            await loadBooks();
+            await refreshAdminData();
             renderBooks();
             alert('Book deleted successfully!');
           }
@@ -482,11 +489,19 @@
           enteredHash === CONFIG.ADMIN_PASSWORD_SHA256) {
 
         adminMode = true;
+        adminPasswordPlain = password; // stored only in-memory for this session
+
         document.getElementById('admin-panel').style.display = 'block';
-        alert('Admin mode enabled. You can now review pending uploads and manage all books.');
-        renderBooks();
-        renderPendingBooks();
-        updateStorageInfo();
+        alert('Admin mode enabled. You can now review pending uploads.');
+
+        try {
+          await refreshAdminData();
+          renderBooks();
+          renderPendingBooks();
+        } catch (err) {
+          console.error(err);
+          alert('Admin load failed: ' + (err?.message || 'Unknown error'));
+        }
 
       } else {
         alert('Incorrect admin password (or admin hash not configured).');
@@ -500,7 +515,7 @@
       const grid = document.getElementById('pending-grid');
       grid.innerHTML = '';
 
-      const pendingBooks = books.filter(b => b.status === 'pending');
+      document.getElementById('pending-count').textContent = String(pendingBooks.length);
 
       if (pendingBooks.length === 0) {
         grid.innerHTML = '<p style="color:#c5d6ff;">No pending uploads to review.</p>';
@@ -559,7 +574,9 @@
       const grid = document.getElementById('inventory-grid');
       grid.innerHTML = '';
 
-      const visibleBooks = adminMode ? books : books.filter(b => b.status === 'approved');
+      const visibleBooks = adminMode
+        ? [...pendingBooks, ...books]
+        : books;
 
       if (visibleBooks.length === 0) {
         grid.innerHTML = '<p style="color:#c5d6ff; grid-column:1 / -1;">No books available yet. Check back soon!</p>';
@@ -585,9 +602,9 @@
 
         const titleEl = document.createElement('div');
         titleEl.className = 'book-title';
-        titleEl.innerHTML = book.title;
+        titleEl.textContent = book.title;
         if (book.status === 'pending' && adminMode) {
-          titleEl.innerHTML += ' <span class="pending-badge">PENDING</span>';
+          titleEl.insertAdjacentHTML('beforeend', ' <span class="pending-badge">PENDING</span>');
         }
 
         const emailEl = document.createElement('div');
@@ -610,7 +627,9 @@
       const grid = document.getElementById('inventory-grid');
       grid.innerHTML = '';
 
-      const visibleBooks = adminMode ? books : books.filter(b => b.status === 'approved');
+      const visibleBooks = adminMode
+        ? [...pendingBooks, ...books]
+        : books;
       const filtered = visibleBooks.filter(book => (book.title || '').toLowerCase().includes(query));
 
       if (filtered.length === 0) {
@@ -637,9 +656,9 @@
 
         const titleEl = document.createElement('div');
         titleEl.className = 'book-title';
-        titleEl.innerHTML = book.title;
+        titleEl.textContent = book.title;
         if (book.status === 'pending' && adminMode) {
-          titleEl.innerHTML += ' <span class="pending-badge">PENDING</span>';
+          titleEl.insertAdjacentHTML('beforeend', ' <span class="pending-badge">PENDING</span>');
         }
 
         const emailEl = document.createElement('div');
@@ -740,7 +759,10 @@
         if (savedBook) {
           await loadBooks();
           renderBooks();
-          if (adminMode) renderPendingBooks();
+          if (adminMode) {
+            pendingBooks = await adminListPendingFromDB();
+            renderPendingBooks();
+          }
 
           status.textContent = 'Sending admin notification...';
           const emailSent = await sendAdminReviewEmail(email, title, bookId);

@@ -363,7 +363,15 @@
       return data[0];
     }
 
-    async function deleteBookFromDB(id) {
+    async function deleteBookOwnerFromDB(id, passwordPlaintext) {
+      const { error } = await supabaseClient
+        .rpc('delete_book_with_password', { p_id: id, p_password: passwordPlaintext });
+
+      if (error) throw error;
+      return true;
+    }
+
+    async function deleteBookAdminFromDB(id) {
       const { error } = await supabaseClient
         .from('books')
         .delete()
@@ -413,7 +421,7 @@
       if (!book) return;
 
       if (confirm(`Reject and delete "${book.title}" by ${book.email}?`)) {
-        const deleted = await deleteBookFromDB(id);
+        const deleted = await deleteBookAdminFromDB(id);
         if (deleted) {
           await loadBooks();
           renderBooks();
@@ -429,7 +437,7 @@
 
       if (adminMode) {
         if (confirm(`[ADMIN MODE] Delete "${book.title}" uploaded by ${book.email}?`)) {
-          const deleted = await deleteBookFromDB(id);
+          const deleted = await deleteBookAdminFromDB(id);
           if (deleted) {
             await loadBooks();
             renderBooks();
@@ -447,11 +455,16 @@
 
       if (hashedInput === book.password_hash) {
         if (confirm('Are you sure you want to delete this book?')) {
-          const deleted = await deleteBookFromDB(id);
-          if (deleted) {
-            await loadBooks();
-            renderBooks();
-            alert('Book deleted successfully!');
+          try {
+            const deleted = await deleteBookOwnerFromDB(id, password);
+            if (deleted) {
+              await loadBooks();
+              renderBooks();
+              alert('Book deleted successfully!');
+            }
+          } catch (err) {
+            console.error(err);
+            alert('Delete failed: ' + (err?.message || 'Unknown error'));
           }
         }
       } else {
